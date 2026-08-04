@@ -47,14 +47,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (body.action === 'approve_plan' || body.action === 'reject_plan') {
     if (current.status !== 'awaiting_plan_approval') return NextResponse.json({ error: `Task is already ${current.status.replaceAll('_', ' ')}.` }, { status: 409 });
     const approved = body.action === 'approve_plan';
-    if (approved && process.env.GITHUB_CLI_ENABLED !== 'true' && (!process.env.GITHUB_INSTALLATION_ID || !process.env.GITHUB_PRIVATE_KEY_PATH)) {
+    const evaluationOnly = current.title.startsWith('AI Project Manager Evaluation');
+    if (approved && !evaluationOnly && process.env.GITHUB_CLI_ENABLED !== 'true' && (!process.env.GITHUB_INSTALLATION_ID || !process.env.GITHUB_PRIVATE_KEY_PATH)) {
       return NextResponse.json({ error: 'Plan saved, but execution is locked until the GitHub App installation and private key are configured.' }, { status: 503 });
     }
     await prisma.$transaction([
-      prisma.task.update({ where: { id }, data: { status: approved ? 'queued' : 'rejected', assignedAgent: approved ? 'Agent Foundry Runner' : current.assignedAgent } }),
+      prisma.task.update({ where: { id }, data: { status: approved ? (evaluationOnly ? 'completed' : 'queued') : 'rejected', assignedAgent: approved ? (evaluationOnly ? 'AI Project Manager' : 'Agent Foundry Runner') : current.assignedAgent, completedAt: approved && evaluationOnly ? new Date() : current.completedAt } }),
       prisma.approval.updateMany({ where: { taskId: id, approvalType: 'plan', decision: 'pending' }, data: { decision: approved ? 'approved' : 'rejected', approvedBy: auth.session!.userId, approvedAt: new Date(), comments: typeof body.comments === 'string' ? body.comments.slice(0, 2000) : null } }),
       prisma.auditEvent.create({ data: { actor: auth.session!.userId, action: approved ? 'task.plan_approved' : 'task.plan_rejected', target: id, result: 'success' } }),
     ]);
+    if (approved && evaluationOnly) return NextResponse.json({ message: 'AI Project Manager evaluation approved and completed. No coding work was executed.' });
     if (approved) {
       try {
         const job = await enqueueExecution(id);
