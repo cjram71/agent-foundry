@@ -100,14 +100,14 @@ For Ollama fallback, install Ollama separately, download a model, and keep its A
 
 ```bash
 OLLAMA_HOST=127.0.0.1:11434 ollama serve
-ollama pull qwen2.5-coder:7b
+ollama pull qwen2.5-coder:3b
 ```
 
 Then set:
 
 ```dotenv
 OLLAMA_URL=http://127.0.0.1:11434
-OLLAMA_MODEL=qwen2.5-coder:7b
+OLLAMA_MODEL=qwen2.5-coder:3b
 ```
 
 Agent Foundry attempts Gemini first and uses Ollama only for quota, rate-limit, or temporary provider failures.

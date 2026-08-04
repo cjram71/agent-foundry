@@ -122,8 +122,8 @@ async function generateCoderResponse(prompt: string) {
     const message = error instanceof Error ? error.message : String(error);
     if (!/(?:429|503|UNAVAILABLE|RESOURCE_EXHAUSTED|quota exceeded|rate.?limit|high demand|temporar)/i.test(message)) throw error;
     const endpoint = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
-    const model = process.env.OLLAMA_MODEL || 'qwen2.5-coder:7b';
-    const response = await fetch(`${endpoint}/api/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, prompt, stream: false, format: 'json', options: { temperature: 0.2, num_ctx: 16384 } }), signal: AbortSignal.timeout(300_000) });
+    const model = process.env.OLLAMA_MODEL || 'qwen2.5-coder:3b';
+    const response = await fetch(`${endpoint}/api/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, prompt, stream: false, format: 'json', options: { temperature: 0.2, num_ctx: 16384 } }), signal: AbortSignal.timeout(900_000) });
     if (!response.ok) throw new Error(`Ollama fallback failed with HTTP ${response.status}`);
     const result = await response.json() as { response?: string; prompt_eval_count?: number; eval_count?: number };
     if (!result.response) throw new Error('Ollama fallback returned no coding response');
