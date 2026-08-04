@@ -1,0 +1,23 @@
+{
+  "name": "runner",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start": "node dist/index.js",
+    "build": "tsc",
+    "test": "npm run build && node --test dist/sandbox.test.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "dotenv": "^16.4.5",
+    "@google/genai": "^2.15.0",
+    "@foundry/github": "0.1.0",
+    "bullmq": "^5.67.2",
+    "ioredis": "^5.8.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.9.2"
+  }
+}

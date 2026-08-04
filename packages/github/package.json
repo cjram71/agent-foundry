@@ -1,0 +1,9 @@
+{
+  "name": "@foundry/github",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/client.js",
+  "types": "dist/client.d.ts",
+  "scripts": { "build": "tsc" },
+  "devDependencies": { "typescript": "^5.0.0", "@types/node": "^20.0.0" }
+}

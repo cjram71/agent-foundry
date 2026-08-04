@@ -1,0 +1,9 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/database" },
+    { "path": "./packages/github" },
+    { "path": "./apps/orchestrator" },
+    { "path": "./apps/runner" }
+  ]
+}

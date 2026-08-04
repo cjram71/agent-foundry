@@ -1,0 +1,115 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN
+  OPERATOR
+}
+
+enum TaskStatus {
+  draft
+  awaiting_plan_approval
+  approved
+  queued
+  planning
+  coding
+  testing
+  reviewing
+  awaiting_human_review
+  pull_request_open
+  preview_ready
+  approved_for_merge
+  rejected
+  failed
+  cancelled
+  completed
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String
+  role          Role      @default(OPERATOR)
+  createdAt     DateTime  @default(now())
+  lastLoginAt   DateTime?
+}
+
+model Project {
+  id                 String    @id @default(uuid())
+  name               String
+  githubOwner        String
+  githubRepo         String
+  defaultBranch      String    @default("main")
+  projectType        String    @default("web_app")
+  productionUrl      String?
+  vercelProjectRef   String?
+  vercelTeamRef      String?
+  authorisedStatus   Boolean   @default(false)
+  spendingLimit      Float     @default(50.00)
+  createdAt          DateTime  @default(now())
+  tasks              Task[]
+}
+
+model Task {
+  id                 String       @id @default(uuid())
+  projectId          String
+  project            Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title              String
+  completeInstruction String
+  status             TaskStatus   @default(draft)
+  riskLevel          String       @default("medium")
+  assignedAgent      String?
+  branchName         String?
+  pullRequestUrl     String?
+  previewUrl         String?
+  tokenUsage         Int          @default(0)
+  estimatedCost      Float        @default(0.0)
+  createdAt          DateTime     @default(now())
+  startedAt          DateTime?
+  completedAt        DateTime?
+  agentRuns          AgentRun[]
+  approvals          Approval[]
+}
+
+model AgentRun {
+  id            String    @id @default(uuid())
+  taskId        String
+  task          Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  provider      String
+  model         String
+  role          String
+  promptHash    String
+  status        String
+  tokenUsage    Int       @default(0)
+  outputSummary String?
+  errorInfo     String?
+  createdAt     DateTime  @default(now())
+}
+
+model Approval {
+  id            String    @id @default(uuid())
+  taskId        String
+  task          Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  approvalType  String    // 'plan', 'merge', 'infrastructure'
+  requestedAt   DateTime  @default(now())
+  approvedBy    String?
+  approvedAt    DateTime?
+  decision      String    @default("pending") // 'pending', 'approved', 'rejected'
+  comments      String?
+}
+
+model AuditEvent {
+  id        String   @id @default(uuid())
+  actor     String
+  action    String
+  target    String
+  result    String
+  metadata  Json?
+  timestamp DateTime @default(now())
+}

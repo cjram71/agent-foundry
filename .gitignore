@@ -1,0 +1,49 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.crt
+secrets/
+credentials/
+
+# Dependencies and generated builds
+node_modules/
+.next/
+dist/
+coverage/
+*.tsbuildinfo
+*.log
+npm-debug.log*
+
+# Runtime state
+foundry-repos/
+agent-catalogs/
+models/
+ollama/
+*.sqlite
+*.db
+postgres_data/
+redis_data/
+.pm2/
+
+# Tool-generated skill caches
+packages/database/.agents/
+packages/database/.claude/
+packages/database/.windsurf/
+packages/database/skills-lock.json
+
+# Temporary recovery and diagnostic scripts
+check-queued.cjs
+inspect-ai-manager.cjs
+requeue-*.cjs
+*-original.*
+*.bak
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

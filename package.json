@@ -1,0 +1,13 @@
+{
+  "name": "agent-foundry",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "tsc --build tsconfig.json",
+    "clean": "rm -rf apps/*/dist packages/*/dist"
+  }
+}
