@@ -40,12 +40,14 @@ async function generatePlannerResponse(prompt: string): Promise<GenerationResult
     const response = await fetch(`${endpoint}/api/generate`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ model, prompt, stream: false, format: 'json', options: { temperature: 0.2, num_ctx: 16384 } }),
+      body: JSON.stringify({ model, prompt, stream: true, format: 'json', options: { temperature: 0.2, num_ctx: 16384 } }),
       signal: AbortSignal.timeout(900000),
     });
     if (!response.ok) throw new Error(`Ollama planner request failed with HTTP ${response.status}`);
-    const result = await response.json() as { response?: string; prompt_eval_count?: number; eval_count?: number };
-    return { text: result.response?.trim() || '', totalTokens: (result.prompt_eval_count || 0) + (result.eval_count || 0), provider: 'ollama', model };
+    const parts = (await response.text()).trim().split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line) as { response?: string; prompt_eval_count?: number; eval_count?: number; done?: boolean });
+    const text = parts.map(part => part.response || '').join('').trim();
+    const finalPart = [...parts].reverse().find(part => part.done) || parts[parts.length - 1];
+    return { text, totalTokens: (finalPart?.prompt_eval_count || 0) + (finalPart?.eval_count || 0), provider: 'ollama', model };
   }
 }
 

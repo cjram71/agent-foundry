@@ -123,11 +123,13 @@ async function generateCoderResponse(prompt: string) {
     if (!/(?:429|503|UNAVAILABLE|RESOURCE_EXHAUSTED|quota exceeded|rate.?limit|high demand|temporar)/i.test(message)) throw error;
     const endpoint = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
     const model = process.env.OLLAMA_MODEL || 'qwen2.5-coder:3b';
-    const response = await fetch(`${endpoint}/api/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, prompt, stream: false, format: 'json', options: { temperature: 0.2, num_ctx: 16384 } }), signal: AbortSignal.timeout(900_000) });
+    const response = await fetch(`${endpoint}/api/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, prompt, stream: true, format: 'json', options: { temperature: 0.2, num_ctx: 16384 } }), signal: AbortSignal.timeout(900_000) });
     if (!response.ok) throw new Error(`Ollama fallback failed with HTTP ${response.status}`);
-    const result = await response.json() as { response?: string; prompt_eval_count?: number; eval_count?: number };
-    if (!result.response) throw new Error('Ollama fallback returned no coding response');
-    return { text: result.response, usageMetadata: { totalTokenCount: (result.prompt_eval_count || 0) + (result.eval_count || 0) }, provider: 'ollama', model };
+    const parts = (await response.text()).trim().split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line) as { response?: string; prompt_eval_count?: number; eval_count?: number; done?: boolean });
+    const text = parts.map(part => part.response || '').join('');
+    const finalPart = [...parts].reverse().find(part => part.done) || parts[parts.length - 1];
+    if (!text) throw new Error('Ollama fallback returned no coding response');
+    return { text, usageMetadata: { totalTokenCount: (finalPart?.prompt_eval_count || 0) + (finalPart?.eval_count || 0) }, provider: 'ollama', model };
   }
 }
 async function executeTask(taskId: string, jobId: string | undefined) {
