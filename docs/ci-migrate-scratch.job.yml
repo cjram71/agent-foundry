@@ -77,3 +77,6 @@
           DATABASE_URL: postgresql://foundry:foundry@localhost:5432/foundry
           REDIS_PASSWORD: foundry
           APP_URL: http://127.0.0.1:3000
+      # ---- P9 additions: orchestrator catalog + plan validation ---------
+      - name: Orchestrator catalog & plan validation unit tests
+        run: npm test --workspace=apps/orchestrator

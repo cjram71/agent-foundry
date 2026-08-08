@@ -20,15 +20,18 @@ Authenticate GitHub CLI using the least privileges and repository scope needed b
 
 Run `bash scripts/install-ubuntu.sh`. It starts PostgreSQL and Redis, installs locked dependencies, generates Prisma Client, deploys migrations, builds every workspace, and runs runner tests.
 
-## 5. Optional agent catalog
+## 5. Agent catalog (required for planning)
 
-Clone the approved catalog into `AGENT_CATALOG_PATH`:
+`scripts/install-ubuntu.sh` clones the approved catalog into `AGENT_CATALOG_PATH`
+and checks out `AGENT_CATALOG_COMMIT` when set (refusing to overwrite a
+non-catalog directory). No manual step is needed for a fresh install.
 
-```bash
-git clone https://github.com/cjram71/500-AI-Agents-Projects "$AGENT_CATALOG_PATH"
-```
-
-Pin and review the catalog commit before production use. Agent Foundry reads metadata for role selection; catalog content is untrusted input.
+Pin enforcement is active since P9: the orchestrator verifies the checkout is a
+real git commit object (`rev-parse --verify HEAD^{commit}`) and, when
+`AGENT_CATALOG_COMMIT` is set, that it equals the pin — failing closed on any
+mismatch. An empty pin is unpinned development mode; every plan records
+`catalogPinned: false`. Production must pin. See `docs/ROLE-CATALOG.md` for the
+trust model, entry schema, and the pin-advancement runbook.
 
 ## 6. Optional Ollama
 
