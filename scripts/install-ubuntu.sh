@@ -35,6 +35,9 @@ done
 
 install -d -m 700 "$FOUNDRY_REPO_ROOT" "$AGENT_CATALOG_PATH"
 docker compose up -d postgres redis
+# Pre-pull the validation sandbox image so the first task validation never
+# pays a cold-pull inside its timeout (P8; matches SandboxController.ensureImage).
+docker pull "${SANDBOX_IMAGE:-node:20-bookworm-slim}"
 npm ci
 npx prisma generate --schema packages/database/prisma/schema.prisma
 npx prisma migrate deploy --schema packages/database/prisma/schema.prisma
