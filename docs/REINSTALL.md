@@ -58,3 +58,14 @@ For a true migration, back up PostgreSQL with `pg_dump` and restore it on the ne
 - port 3000 is private or protected by TLS/authentication.
 - port 11434 is localhost-only when Ollama is used.
 - a test project can be registered, authorized, planned, approved, and opened as a draft pull request.
+
+## 8. Backups (P15)
+
+Schedule daily backups and run a restore drill once after installation:
+
+```bash
+( crontab -l 2>/dev/null; echo '17 3 * * * /home/cory/agent-foundry/scripts/backup.sh >> /var/log/foundry-backup.log 2>&1' ) | crontab -
+bash scripts/backup.sh && bash scripts/restore.sh --verify "$(ls -td /srv/agent-foundry/backups/*/ | head -1)"
+```
+
+See docs/BACKUPS.md for scope, retention, off-host guidance, and the restore procedure.
