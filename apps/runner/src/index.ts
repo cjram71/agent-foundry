@@ -8,7 +8,7 @@ import IORedis from 'ioredis';
 import { GoogleGenAI } from '@google/genai';
 import { PrismaClient } from '@prisma/client';
 import { GitHubClient } from '@foundry/github';
-import { transitionTask } from '@foundry/state-machine';
+import { transitionTask, emitTaskEvent, tryEmitTaskEvent } from '@foundry/state-machine';
 import { ReviewerAgent } from './reviewer';
 import { SandboxController, ValidationCommand } from './sandbox';
 
@@ -147,8 +147,10 @@ async function executeTask(taskId: string, jobId: string | undefined) {
   let repoPath = ''; let branchName = '';
   const attempt = await prisma.$transaction(async tx => {
     const previous = await tx.taskAttempt.count({ where: { taskId } });
-    const createdAttempt = await tx.taskAttempt.create({ data: { taskId, attemptNumber: previous + 1, correlationId: jobId || `execute-${taskId}-${Date.now()}` } });
+    const correlationId = jobId || `execute-${taskId}-${Date.now()}`;
+    const createdAttempt = await tx.taskAttempt.create({ data: { taskId, attemptNumber: previous + 1, correlationId } });
     await tx.task.update({ where: { id: taskId }, data: { currentAttemptId: createdAttempt.id } });
+    await emitTaskEvent(tx, { taskId, type: 'execution_started', actor: 'runner', actorType: 'worker', attemptId: createdAttempt.id, correlationId, payload: { attemptNumber: previous + 1 } });
     return createdAttempt;
   });
   const transition = (to: Parameters<typeof transitionTask>[1]['to'], options: Pick<Parameters<typeof transitionTask>[1], 'reason' | 'legacyStatus' | 'extraTaskData' | 'metadata' | 'expectCurrentAttemptId'> = {}) =>
@@ -173,21 +175,32 @@ async function executeTask(taskId: string, jobId: string | undefined) {
     const result = validateCoderResult(JSON.parse(normalizedJson));
     await applyChanges(repoPath, result.changes);
     await prisma.agentRun.update({ where: { id: run.id }, data: { provider: response.provider, model: response.model, promptHash: createHash('sha256').update(prompt).digest('hex'), tokenUsage: response.usageMetadata?.totalTokenCount || 0, outputSummary: result.summary } });
+    await tryEmitTaskEvent(prisma, { taskId, type: 'code_generated', actor: 'runner', actorType: 'worker', attemptId: attempt.id, correlationId: jobId, payload: { provider: response.provider, model: response.model, files: result.changes.length } });
 
     await transition('VALIDATING', { reason: 'coder returned changes; running validation', legacyStatus: 'testing', extraTaskData: { tokenUsage: { increment: response.usageMetadata?.totalTokenCount || 0 } } });
+    await tryEmitTaskEvent(prisma, { taskId, type: 'validation_started', actor: 'runner', actorType: 'worker', attemptId: attempt.id, correlationId: jobId });
     await runProcess('npm', ['install','--ignore-scripts','--no-package-lock','--no-audit','--no-fund'], repoPath);
     const commands = await validationCommands(repoPath);
     const sandbox = new SandboxController();
     for (const command of commands.slice(0,-1)) {
       const validation = await sandbox.executeInSandbox({ taskId, repoPath, command, timeoutMs: 180_000 });
-      if (!validation.success) throw new Error(`Validation failed: ${command.args.join(' ')}\n${validation.output.slice(-4000)}`);
+      if (!validation.success) {
+        await tryEmitTaskEvent(prisma, { taskId, type: 'validation_failed', actor: 'runner', actorType: 'worker', attemptId: attempt.id, correlationId: jobId, payload: { command: `${command.executable} ${command.args.join(' ')}` } });
+        throw new Error(`Validation failed: ${command.args.join(' ')}\n${validation.output.slice(-4000)}`);
+      }
     }
     const diff = await github.getDiff(repoPath);
     if (!diff.trim()) throw new Error('Coding agent produced no diff');
+    await tryEmitTaskEvent(prisma, { taskId, type: 'validation_passed', actor: 'runner', actorType: 'worker', attemptId: attempt.id, correlationId: jobId, payload: { commands: commands.map(command => `${command.executable} ${command.args.join(' ')}`) } });
     await transition('REVIEWING', { reason: 'validation produced a diff; safety review starting', legacyStatus: 'reviewing' });
+    await tryEmitTaskEvent(prisma, { taskId, type: 'review_started', actor: 'runner', actorType: 'worker', attemptId: attempt.id, correlationId: jobId });
     const reviewer = new ReviewerAgent();
     const review = await reviewer.reviewAndValidate(taskId, repoPath, commands[commands.length - 1], diff);
-    if (!review.passed) throw new Error(review.feedback.slice(0,4000));
+    if (!review.passed) {
+      await tryEmitTaskEvent(prisma, { taskId, type: 'review_failed', actor: 'runner', actorType: 'worker', attemptId: attempt.id, correlationId: jobId, payload: { feedback: review.feedback.slice(0, 1000) } });
+      throw new Error(review.feedback.slice(0,4000));
+    }
+    await tryEmitTaskEvent(prisma, { taskId, type: 'review_passed', actor: 'runner', actorType: 'worker', attemptId: attempt.id, correlationId: jobId });
 
     const commit = await github.commitTaskChanges(repoPath, result.changes.map(change => change.path), task.title);
     await github.pushTaskBranch(repoPath, branchName);
@@ -203,6 +216,8 @@ async function executeTask(taskId: string, jobId: string | undefined) {
       });
       await tx.taskAttempt.update({ where: { id: attempt.id }, data: { status: 'succeeded', endedAt: new Date(), commitSha: commit, outcomeSummary: `Draft PR ${pr.url}` } });
       await tx.approval.create({ data: { taskId, approvalType: 'merge' } });
+      await emitTaskEvent(tx, { taskId, type: 'draft_pr_opened', actor: 'runner', actorType: 'worker', attemptId: attempt.id, correlationId: jobId, payload: { pullRequestUrl: pr.url, branchName, commit } });
+      await emitTaskEvent(tx, { taskId, type: 'final_approval_requested', actor: 'runner', actorType: 'worker', attemptId: attempt.id, correlationId: jobId, payload: { gate: 'merge', pullRequestUrl: pr.url } });
       await tx.auditEvent.create({ data: { actor: 'runner', action: 'task.draft_pr_opened', target: taskId, result: 'success', metadata: { jobId, branchName, commit, pullRequestUrl: pr.url, automaticMerge: false } } });
     });
     return { pullRequestUrl: pr.url, branchName, commit };
@@ -223,6 +238,7 @@ async function executeTask(taskId: string, jobId: string | undefined) {
         // still recorded on the attempt and agent run below.
       }
       await tx.taskAttempt.update({ where: { id: attempt.id }, data: { status: 'failed', endedAt: new Date(), outcomeSummary: message.slice(0, 1000) } });
+      await emitTaskEvent(tx, { taskId, type: 'task_failed', actor: 'runner', actorType: 'worker', attemptId: attempt.id, correlationId: jobId, payload: { stage: repoPath ? 'workspace' : 'setup', error: message.slice(0, 1000) } });
       await tx.auditEvent.create({ data: { actor: 'runner', action: 'task.execution_failed', target: taskId, result: 'failed', metadata: { jobId, stage: repoPath ? 'workspace' : 'setup' } } });
     });
     throw error;

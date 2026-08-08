@@ -6,7 +6,8 @@
 //    UPDATE on the expected current state; callers must invoke us inside an
 //    interactive transaction when combining with other writes),
 //  * every accepted move leaves an immutable TaskStateTransition row with
-//    attempt/correlation/actor/evidence context,
+//    attempt/correlation/actor/evidence context, plus a task_state_changed
+//    TaskEvent (domain projection) in the same write,
 //  * every rejected or lost-race move is logged as an AuditEvent
 //    (task.transition_rejected / task.transition_conflict),
 //  * the legacy `status` column is kept in sync from the mapping (overridable)
@@ -15,6 +16,7 @@
 import { isTaskState, type TaskState } from './states';
 import { isValidTransition } from './transitions';
 import { LEGACY_STATUS_BY_STATE } from './legacy-map';
+import { emitTaskEvent, type TaskEventDbClient } from './events';
 import { InvalidTaskTransitionError, TaskNotFoundError, TaskTransitionConflictError } from './errors';
 
 export type ActorType = 'human' | 'worker' | 'system';
@@ -48,7 +50,7 @@ export interface TransitionResult {
  * never depends on generated Prisma types (it must stay buildable and
  * testable outside generator access and remain version-tolerant).
  */
-export interface TransitionDbClient {
+export interface TransitionDbClient extends TaskEventDbClient {
   task: {
     findUnique(args: { where: { id: string }; select: { state: true } }): Promise<{ state: string } | null>;
     updateMany(args: {
@@ -142,6 +144,18 @@ export async function transitionTask(
       correlationId: input.correlationId ?? null,
       metadata: input.metadata ?? undefined,
     },
+  });
+  // Domain projection: every accepted move has an event in the same
+  // transaction. TaskStateTransition stays authoritative; this is for
+  // consumers (activity feeds, metrics, future notifications).
+  await emitTaskEvent(db, {
+    taskId,
+    type: 'task_state_changed',
+    actor,
+    actorType,
+    attemptId: input.attemptId,
+    correlationId: input.correlationId,
+    payload: { from, to, reason: input.reason ?? null },
   });
   await logTransitionEvent(db, {
     action: 'task.state_changed',

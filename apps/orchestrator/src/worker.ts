@@ -9,7 +9,7 @@ import { Worker } from 'bullmq';
 import IORedis from 'ioredis';
 import { GoogleGenAI } from '@google/genai';
 import { PrismaClient } from '@prisma/client';
-import { transitionTask } from '@foundry/state-machine';
+import { transitionTask, emitTaskEvent, tryEmitTaskEvent } from '@foundry/state-machine';
 
 const prisma = new PrismaClient();
 const connection = new IORedis({ host: '127.0.0.1', port: 6379, password: process.env.REDIS_PASSWORD || undefined, maxRetriesPerRequest: null });
@@ -103,6 +103,7 @@ const worker = new Worker('foundry-tasks', async (job) => {
   const task = await prisma.task.findUnique({ where: { id: job.data.taskId }, include: { project: true } });
   if (!task) throw new Error(`Task ${job.data.taskId} not found`);
   if (!task.project.authorisedStatus) throw new Error('Project is not authorised');
+  await tryEmitTaskEvent(prisma, { taskId: task.id, type: 'planning_started', actor: 'orchestrator', actorType: 'worker', correlationId: job.id });
   const managerEvaluation = task.title.startsWith('AI Project Manager Evaluation');
   const maxAgents = managerEvaluation ? 15 : 5;
   const catalog = await loadAgentCatalog();
@@ -125,6 +126,8 @@ const worker = new Worker('foundry-tasks', async (job) => {
         extraTaskData: { tokenUsage: { increment: tokens } },
       });
       await tx.approval.create({ data: { taskId: task.id, approvalType: 'plan' } });
+      await emitTaskEvent(tx, { taskId: task.id, type: 'plan_generated', actor: 'orchestrator', actorType: 'worker', correlationId: job.id, payload: { provider: response.provider, model: response.model, tokens, catalogCommit: catalog.commit, selectedAgents: plan.selectedAgents.map(agent => agent.catalogId), steps: plan.steps.length } });
+      await emitTaskEvent(tx, { taskId: task.id, type: 'plan_approval_requested', actor: 'orchestrator', actorType: 'worker', correlationId: job.id, payload: { gate: 'plan' } });
       await tx.auditEvent.create({ data: { actor: 'orchestrator', action: 'task.plan_generated', target: task.id, result: 'success', metadata: { jobId: job.id, tokens, catalogCommit: catalog.commit, selectedAgents: plan.selectedAgents.map(agent => agent.catalogId) } } });
     });
     return { success: true };
@@ -139,6 +142,7 @@ const worker = new Worker('foundry-tasks', async (job) => {
           taskId: task.id, to: 'FAILED', actor: 'orchestrator', actorType: 'worker',
           reason: message.slice(0, 500), legacyStatus: 'failed', correlationId: job.id,
         });
+        await emitTaskEvent(tx, { taskId: task.id, type: 'task_failed', actor: 'orchestrator', actorType: 'worker', correlationId: job.id, payload: { stage: 'planning', error: message.slice(0, 1000) } });
       }
       await tx.auditEvent.create({ data: { actor: 'orchestrator', action: preserveSuccessfulPlan ? 'task.duplicate_plan_failed_ignored' : 'task.plan_generated', target: task.id, result: 'failed', metadata: { catalogCommit: catalog.commit } } });
     });

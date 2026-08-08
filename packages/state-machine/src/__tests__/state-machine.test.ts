@@ -4,11 +4,15 @@ import {
   TASK_STATES,
   TERMINAL_STATES,
   TRANSITIONS,
+  TASK_EVENT_TYPES,
   isValidTransition,
+  isTaskEventType,
   reachableStates,
   LEGACY_STATUS_BY_STATE,
   STATE_BY_LEGACY_STATUS,
   transitionTask,
+  emitTaskEvent,
+  tryEmitTaskEvent,
   InvalidTaskTransitionError,
   TaskNotFoundError,
   TaskTransitionConflictError,
@@ -119,11 +123,12 @@ type FakeCalls = {
   updateWhere: Record<string, unknown> | null;
   updateData: Record<string, unknown> | null;
   transitions: Array<Record<string, unknown>>;
+  events: Array<Record<string, unknown>>;
   audits: Array<Record<string, unknown>>;
 };
 
 function fakeDb(opts: { storedState: string | null; updateCount?: number }): { db: TransitionDbClient; calls: FakeCalls } {
-  const calls: FakeCalls = { updateWhere: null, updateData: null, transitions: [], audits: [] };
+  const calls: FakeCalls = { updateWhere: null, updateData: null, transitions: [], events: [], audits: [] };
   const db: TransitionDbClient = {
     task: {
       findUnique: async () => (opts.storedState ? { state: opts.storedState } : null),
@@ -135,6 +140,9 @@ function fakeDb(opts: { storedState: string | null; updateCount?: number }): { d
     },
     taskStateTransition: {
       create: async ({ data }) => { calls.transitions.push(data); return {}; },
+    },
+    taskEvent: {
+      create: async ({ data }) => { calls.events.push(data); return {}; },
     },
     auditEvent: {
       create: async ({ data }) => { calls.audits.push(data); return {}; },
@@ -164,6 +172,11 @@ test('transitionTask: valid move is atomic and records an immutable transition',
     { taskId: 't1', attemptId: 'attempt-9', fromState: 'RUNNING', toState: 'VALIDATING', actor: 'runner', actorType: 'worker', correlationId: 'job-42' },
   );
   assert.ok(calls.audits.some((a) => a.action === 'task.state_changed'));
+  // and the domain projection was emitted with the move
+  assert.equal(calls.events.length, 1);
+  assert.equal(calls.events[0].type, 'task_state_changed');
+  assert.equal(calls.events[0].attemptId, 'attempt-9');
+  assert.deepEqual(calls.events[0].payload, { from: 'RUNNING', to: 'VALIDATING', reason: 'checks starting' });
 });
 
 test('transitionTask: invalid move is rejected, audited, and writes nothing else', async () => {
@@ -174,6 +187,7 @@ test('transitionTask: invalid move is rejected, audited, and writes nothing else
   );
   assert.equal(calls.updateWhere, null, 'no task write attempted');
   assert.equal(calls.transitions.length, 0, 'no transition row on rejection');
+  assert.equal(calls.events.length, 0, 'no event on rejection');
   const rejection = calls.audits.find((a) => a.action === 'task.transition_rejected');
   assert.ok(rejection, 'rejection is logged');
   assert.equal(rejection.result, 'rejected');
@@ -221,4 +235,59 @@ test('transitionTask: stored state outside the enum cannot be laundered', async 
     transitionTask(db, { taskId: 't6', to: 'QUEUED', actor: 'x' }),
     /unrecognized stored state/,
   );
+});
+
+// ---------- task event catalog + emitter (P6) ----------
+
+test('events: exactly the 24 catalog types in the specified order', () => {
+  assert.equal(TASK_EVENT_TYPES.length, 24);
+  assert.deepEqual([...TASK_EVENT_TYPES], [
+    'task_created', 'task_queued', 'planning_started', 'plan_generated',
+    'plan_approval_requested', 'plan_approved', 'plan_rejected',
+    'execution_started', 'code_generated',
+    'validation_started', 'validation_passed', 'validation_failed',
+    'review_started', 'review_passed', 'review_failed',
+    'draft_pr_opened', 'preview_ready',
+    'final_approval_requested', 'final_approved', 'final_rejected',
+    'task_completed', 'task_failed', 'task_cancelled', 'task_state_changed',
+  ]);
+  assert.equal(new Set(TASK_EVENT_TYPES).size, 24, 'no duplicate types');
+  for (const type of TASK_EVENT_TYPES) {
+    assert.match(type, /^[a-z][a-z_]*$/, `${type} uses snake_case`);
+    assert.ok(isTaskEventType(type));
+  }
+  assert.equal(isTaskEventType('task_launched'), false);
+});
+
+test('events: emitTaskEvent writes the full row', async () => {
+  const { db, calls } = fakeDb({ storedState: 'DRAFT' });
+  await emitTaskEvent(db, {
+    taskId: 't7', type: 'plan_approved', actor: 'admin-9', actorType: 'human',
+    attemptId: 'a-1', correlationId: 'req-5', payload: { gate: 'plan' },
+  });
+  assert.equal(calls.events.length, 1);
+  assert.deepEqual(calls.events[0], {
+    taskId: 't7', type: 'plan_approved', actor: 'admin-9', actorType: 'human',
+    attemptId: 'a-1', correlationId: 'req-5', payload: { gate: 'plan' },
+  });
+});
+
+test('events: emitTaskEvent defaults actorType to system and nullable fields to null', async () => {
+  const { db, calls } = fakeDb({ storedState: 'DRAFT' });
+  await emitTaskEvent(db, { taskId: 't8', type: 'task_created', actor: 'ai-project-manager' });
+  assert.equal(calls.events[0].actorType, 'system');
+  assert.equal(calls.events[0].attemptId, null);
+  assert.equal(calls.events[0].correlationId, null);
+  assert.equal(calls.events[0].payload, undefined, 'omitted payload -> column default (NULL)');
+});
+
+test('events: tryEmitTaskEvent never throws; emitTaskEvent propagates (atomic use)', async () => {
+  const failingClient = {
+    taskEvent: {
+      create: async () => { throw new Error('db down'); },
+    },
+  };
+  await assert.rejects(emitTaskEvent(failingClient, { taskId: 't9', type: 'task_failed', actor: 'runner' }), /db down/);
+  const ok = await tryEmitTaskEvent(failingClient, { taskId: 't9', type: 'validation_passed', actor: 'runner' });
+  assert.equal(ok, false, 'best-effort emission reports failure instead of throwing');
 });

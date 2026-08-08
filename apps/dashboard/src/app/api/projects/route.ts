@@ -3,7 +3,7 @@ import prisma from '@/lib/prisma';
 import { getSession, isSameOrigin } from '@/lib/auth';
 import { parseProjectInput, parsePublicUrl, projectTypes } from '@/lib/validation';
 import { enqueuePlan } from '@/lib/queue';
-import { transitionTask } from '@foundry/state-machine';
+import { transitionTask, emitTaskEvent } from '@foundry/state-machine';
 
 async function requireAdmin(request?: Request) { const session=await getSession();if(!session)return{error:NextResponse.json({error:'Unauthorized'},{status:401})};if(session.role!=='ADMIN')return{error:NextResponse.json({error:'Forbidden'},{status:403})};if(request&&!isSameOrigin(request))return{error:NextResponse.json({error:'Invalid origin'},{status:403})};return{session}; }
 export async function GET(){const auth=await requireAdmin();if(auth.error)return auth.error;return NextResponse.json(await prisma.project.findMany({orderBy:{createdAt:'desc'},include:{_count:{select:{tasks:true}}}}));}
@@ -18,8 +18,7 @@ export async function PATCH(request:Request){try{const auth=await requireAdmin(r
     if(active) managerTaskId=active.id;
     else {
       const instruction=`Act as the AI Project Manager for ${project.name}. Automatically evaluate the repository ${project.githubOwner}/${project.githubRepo}, its current product state, target users, likely market, research needs, branding, marketing, content, operations, inventory or suppliers when relevant, technical architecture, security, privacy, deployment, analytics, budget, timeline, risks, and success measures. Select the specialist personnel needed from the verified agent catalog and produce a phased master plan with dependencies, deliverables, acceptance criteria, owner questions, and explicit approval gates. Where business details are unknown, identify them as questions and do not invent commitments. Do not execute work, spend money, publish, contact third parties, or merge code.`;
-      const task=await prisma.task.create({data:{projectId:project.id,title:`AI Project Manager Evaluation — ${project.name}`,completeInstruction:instruction,riskLevel:'high'}});managerTaskId=task.id;
-      await transitionTask(prisma,{taskId:task.id,to:'PLANNING',actor:'ai-project-manager',actorType:'system',reason:'manager evaluation queued',legacyStatus:'planning',extraTaskData:{startedAt:new Date()}});
+      const task=await prisma.$transaction(async tx=>{const created=await tx.task.create({data:{projectId:project.id,title:`AI Project Manager Evaluation — ${project.name}`,completeInstruction:instruction,riskLevel:'high'}});await emitTaskEvent(tx,{taskId:created.id,type:'task_created',actor:'ai-project-manager',actorType:'system',payload:{projectId:project.id,evaluation:true}});await transitionTask(tx,{taskId:created.id,to:'PLANNING',actor:'ai-project-manager',actorType:'system',reason:'manager evaluation queued',legacyStatus:'planning',extraTaskData:{startedAt:new Date()}});return created;});managerTaskId=task.id;
       try{const job=await enqueuePlan(task.id);await prisma.auditEvent.create({data:{actor:'ai-project-manager',action:'project.manager_evaluation_queued',target:project.id,result:'success',metadata:{taskId:task.id,jobId:job.id}}});}
       catch{await transitionTask(prisma,{taskId:task.id,to:'FAILED',actor:'ai-project-manager',actorType:'system',reason:'planning queue unavailable',legacyStatus:'failed'});await prisma.auditEvent.create({data:{actor:'ai-project-manager',action:'project.manager_evaluation_queued',target:project.id,result:'failed',metadata:{taskId:task.id}}});}
     }
