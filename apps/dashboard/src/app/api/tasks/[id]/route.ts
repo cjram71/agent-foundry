@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import prisma from '@/lib/prisma';
 import { getSession, isSameOrigin } from '@/lib/auth';
 import { enqueueExecution, enqueuePlan } from '@/lib/queue';
-import { transitionTask, emitTaskEvent } from '@foundry/state-machine';
+import { transitionTask, emitTaskEvent, isValidTransition } from '@foundry/state-machine';
 import { classifyTaskRisk, evaluateTaskAgainstPolicy, asDeclaredRisk } from '@foundry/policy';
 import { parseManagerPlan, buildTaskDrafts } from '@foundry/manager';
 import { loadActivePolicy } from '@/lib/policy';
@@ -29,7 +29,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (!current.pullRequestUrl) return NextResponse.json({ error: 'This task does not have a pull request yet.' }, { status: 409 });
     try {
       const repository = await readPullRequestStatus(current.pullRequestUrl, current.project.githubOwner, current.project.githubRepo); let status = current.status;
-      if (repository.state === 'MERGED' && current.status !== 'completed') { await prisma.$transaction(async tx => { await transitionTask(tx, { taskId: id, to: 'COMPLETED', actor: 'task-checker', actorType: 'system', reason: 'pull request merged by a human on GitHub', legacyStatus: 'completed', metadata: { pullRequestUrl: current.pullRequestUrl }, extraTaskData: { completedAt: repository.mergedAt ? new Date(repository.mergedAt) : new Date() } }); await emitTaskEvent(tx, { taskId: id, type: 'task_completed', actor: 'task-checker', payload: { pullRequestUrl: current.pullRequestUrl, via: 'merge' } }); await tx.auditEvent.create({ data: { actor: 'task-checker', action: 'task.pull_request_merged', target: id, result: 'success', metadata: { pullRequestUrl: current.pullRequestUrl } } }); }); status = 'completed'; }
+      // P13: completion on external merge is accepted only when the transition
+      // table allows it from the CURRENT state (a terminal task — e.g. FAILED,
+      // REJECTED — must not be resurrected by an out-of-band merge).
+      if (repository.state === 'MERGED' && current.status !== 'completed' && isValidTransition(current.state, 'COMPLETED')) { await prisma.$transaction(async tx => { await transitionTask(tx, { taskId: id, to: 'COMPLETED', actor: 'task-checker', actorType: 'system', reason: 'pull request merged by a human on GitHub', legacyStatus: 'completed', metadata: { pullRequestUrl: current.pullRequestUrl }, extraTaskData: { completedAt: repository.mergedAt ? new Date(repository.mergedAt) : new Date() } }); await emitTaskEvent(tx, { taskId: id, type: 'task_completed', actor: 'task-checker', payload: { pullRequestUrl: current.pullRequestUrl, via: 'merge' } }); await tx.auditEvent.create({ data: { actor: 'task-checker', action: 'task.pull_request_merged', target: id, result: 'success', metadata: { pullRequestUrl: current.pullRequestUrl } } }); }); status = 'completed'; }
       const checkLabel = repository.checks.failed ? `${repository.checks.failed} checks failed` : repository.checks.pending ? `${repository.checks.pending} checks running` : repository.checks.total ? 'All checks passed' : 'No checks reported';
       return NextResponse.json({ status, repository, message: repository.state === 'MERGED' ? 'Pull request merged. Task marked completed.' : `${checkLabel}. Pull request is ${repository.isDraft ? 'draft' : repository.state.toLowerCase()}.` });
     } catch { return NextResponse.json({ error: 'GitHub status is temporarily unavailable. The task was not changed.' }, { status: 503 }); }

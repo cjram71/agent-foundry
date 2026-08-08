@@ -235,18 +235,32 @@ async function executeTask(taskId: string, jobId: string | undefined) {
     const commit = await github.commitTaskChanges(repoPath, [...changedPaths], task.title);
     await github.pushTaskBranch(repoPath, branchName);
     const pr = await github.createDraftPullRequest(repository, task.title, branchName, task.project.defaultBranch, `## What changed\n${changeSummary}\n\n## Why\n${task.completeInstruction}\n\n## Validation\n${commands.map(command => `- ${command.executable} ${command.args.join(' ')}`).join('\n')}\n\n## Review\n${reviewFeedback}\n\nThis pull request is a draft. Agent Foundry does not merge automatically.`);
+    // P13: the success path drives PR_CREATED before opening the final gate.
+    // (Pre-P13 this committed a single REVIEWING -> AWAITING_APPROVAL jump
+    // that the transition table never contained — transitionTask rejected
+    // it, rolling back this whole transaction AFTER the PR was already open.
+    // That is also why createDraftPullRequest is idempotent-by-branch now.)
     await prisma.$transaction(async tx => {
       await tx.agentRun.update({ where: { id: run.id }, data: { status: 'success', outputSummary: `${changeSummary}\n\n${reviewFeedback}` } });
       await transitionTask(tx, {
-        taskId, to: 'AWAITING_APPROVAL', actor: 'runner', actorType: 'worker',
-        reason: 'draft pull request opened', legacyStatus: 'awaiting_human_review',
+        taskId, to: 'PR_CREATED', actor: 'runner', actorType: 'worker',
+        reason: 'draft pull request opened', legacyStatus: 'pull_request_open',
         attemptId: attempt.id, correlationId: jobId, expectCurrentAttemptId: attempt.id,
         metadata: { pullRequestUrl: pr.url, branchName, commit },
         extraTaskData: { pullRequestUrl: pr.url },
       });
       await tx.taskAttempt.update({ where: { id: attempt.id }, data: { status: 'succeeded', endedAt: new Date(), commitSha: commit, outcomeSummary: `Draft PR ${pr.url}` } });
-      await tx.approval.create({ data: { taskId, approvalType: 'merge' } });
       await emitTaskEvent(tx, { taskId, type: 'draft_pr_opened', actor: 'runner', actorType: 'worker', attemptId: attempt.id, correlationId: jobId, payload: { pullRequestUrl: pr.url, branchName, commit } });
+      // The PREVIEW states are intentionally skipped: no preview/provisioning
+      // infrastructure exists in the beta (docs/GITHUB-IDEMPOTENCY.md), and
+      // the table allows PR_CREATED -> AWAITING_APPROVAL directly.
+      await transitionTask(tx, {
+        taskId, to: 'AWAITING_APPROVAL', actor: 'runner', actorType: 'worker',
+        reason: 'final merge gate opened', legacyStatus: 'awaiting_human_review',
+        attemptId: attempt.id, correlationId: jobId, expectCurrentAttemptId: attempt.id,
+        metadata: { gate: 'merge', pullRequestUrl: pr.url },
+      });
+      await tx.approval.create({ data: { taskId, approvalType: 'merge' } });
       await emitTaskEvent(tx, { taskId, type: 'final_approval_requested', actor: 'runner', actorType: 'worker', attemptId: attempt.id, correlationId: jobId, payload: { gate: 'merge', pullRequestUrl: pr.url } });
       await tx.auditEvent.create({ data: { actor: 'runner', action: 'task.draft_pr_opened', target: taskId, result: 'success', metadata: { jobId, branchName, commit, pullRequestUrl: pr.url, automaticMerge: false } } });
     });

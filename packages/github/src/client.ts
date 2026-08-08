@@ -6,6 +6,26 @@ import * as os from 'os';
 type CommandResult = { stdout: string; stderr: string };
 type Repo = { owner: string; repo: string };
 
+/** gh prints a variant of this when a PR for the branch already exists. */
+export function isPrAlreadyExistsError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /already exists/i.test(message);
+}
+
+/** Parse `gh pr list --json url` output, accepting only URLs that belong to
+ *  the authorized repository. Anything malformed is a miss, never a throw. */
+export function parseOpenPrUrlList(stdout: string, fullName: string): string | null {
+  try {
+    const rows = JSON.parse(stdout) as Array<{ url?: unknown }>;
+    if (!Array.isArray(rows)) return null;
+    const expected = new RegExp(`^https://github\\.com/${fullName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/pull/\\d+$`, 'i');
+    const match = rows.find((row) => typeof row?.url === 'string' && expected.test(row.url));
+    return match ? (match.url as string) : null;
+  } catch {
+    return null;
+  }
+}
+
 export class GitHubClient {
   constructor(private readonly allowedRepositories: ReadonlySet<string>, private readonly root = process.env.FOUNDRY_REPO_ROOT || path.join(os.homedir(), 'foundry-repos')) {}
 
@@ -56,11 +76,28 @@ export class GitHubClient {
     await this.run('git', ['-C', repoPath, 'commit', '-m', message.slice(0, 200)]);
     return (await this.run('git', ['-C', repoPath, 'rev-parse', '--short=12', 'HEAD'])).stdout.trim();
   }
+  /** Open a draft PR. Idempotent by branch (P13): if a previous delivery
+   *  opened the PR and then crashed before the database could record it, the
+   *  replay must not fail on "already exists" — it adopts the open PR. */
   public async createDraftPullRequest(repository: Repo, title: string, branchName: string, baseBranch: string, body: string): Promise<{ url: string }> {
     const fullName = this.assertAllowed(repository); this.assertTaskBranch(branchName);
-    const result = await this.run('gh', ['pr', 'create', '--repo', fullName, '--head', branchName, '--base', baseBranch, '--title', title.slice(0, 240), '--body', body.slice(0, 60000), '--draft']);
-    const url = result.stdout.trim(); if (!/^https:\/\/github\.com\//.test(url)) throw new Error('GitHub did not return a pull request URL');
-    return { url };
+    try {
+      const result = await this.run('gh', ['pr', 'create', '--repo', fullName, '--head', branchName, '--base', baseBranch, '--title', title.slice(0, 240), '--body', body.slice(0, 60000), '--draft']);
+      const url = result.stdout.trim(); if (!/^https:\/\/github\.com\//.test(url)) throw new Error('GitHub did not return a pull request URL');
+      return { url };
+    } catch (error) {
+      if (!isPrAlreadyExistsError(error)) throw error;
+      const existing = await this.findOpenPullRequest(repository, branchName);
+      if (existing) return { url: existing };
+      throw error;
+    }
+  }
+
+  /** The URL of the open PR for a task branch, or null. */
+  public async findOpenPullRequest(repository: Repo, branchName: string): Promise<string | null> {
+    const fullName = this.assertAllowed(repository); this.assertTaskBranch(branchName);
+    const result = await this.run('gh', ['pr', 'list', '--repo', fullName, '--head', branchName, '--state', 'open', '--json', 'url', '--limit', '1']);
+    return parseOpenPrUrlList(result.stdout, fullName);
   }
 
   public generateBranchName(taskId: string): string {
@@ -82,5 +119,5 @@ export class GitHubClient {
   }
   private assertTaskBranch(branch: string) { if (!/^foundry\/task-[a-z0-9-]+-[a-z0-9]+$/.test(branch)) throw new Error('Only Agent Foundry task branches may be pushed'); }
   private async assertWorkspace(repoPath: string) { const relative = path.relative(path.resolve(this.root), await fs.realpath(repoPath)); if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('Repository is outside the Foundry workspace root'); }
-  private run(executable: 'gh'|'git', args: string[], timeoutMs = 120000): Promise<CommandResult> { return new Promise((resolve,reject)=>{const child=spawn(executable,args,{shell:false,windowsHide:true,env:{...process.env,GH_PROMPT_DISABLED:'1',GIT_TERMINAL_PROMPT:'0'},stdio:['ignore','pipe','pipe'],timeout:timeoutMs});let stdout='',stderr='';child.stdout.on('data',c=>stdout+=c.toString());child.stderr.on('data',c=>stderr+=c.toString());child.on('error',reject);child.on('close',code=>code===0?resolve({stdout,stderr}):reject(new Error(`${executable} command failed: ${stderr.trim().slice(0,1000)}`)));}); }  private runWithExitCodes(executable: 'git', args: string[], allowed: number[], timeoutMs = 120000): Promise<CommandResult & { code: number }> { return new Promise((resolve,reject)=>{const child=spawn(executable,args,{shell:false,windowsHide:true,env:{...process.env,GIT_TERMINAL_PROMPT:'0'},stdio:['ignore','pipe','pipe'],timeout:timeoutMs});let stdout='',stderr='';child.stdout.on('data',c=>stdout+=c.toString());child.stderr.on('data',c=>stderr+=c.toString());child.on('error',reject);child.on('close',code=>code!==null&&allowed.includes(code)?resolve({stdout,stderr,code}):reject(new Error(`git command failed: ${stderr.trim().slice(0,1000)}`)));}); }
+  protected run(executable: 'gh'|'git', args: string[], timeoutMs = 120000): Promise<CommandResult> { return new Promise((resolve,reject)=>{const child=spawn(executable,args,{shell:false,windowsHide:true,env:{...process.env,GH_PROMPT_DISABLED:'1',GIT_TERMINAL_PROMPT:'0'},stdio:['ignore','pipe','pipe'],timeout:timeoutMs});let stdout='',stderr='';child.stdout.on('data',c=>stdout+=c.toString());child.stderr.on('data',c=>stderr+=c.toString());child.on('error',reject);child.on('close',code=>code===0?resolve({stdout,stderr}):reject(new Error(`${executable} command failed: ${stderr.trim().slice(0,1000)}`)));}); }  protected runWithExitCodes(executable: 'git', args: string[], allowed: number[], timeoutMs = 120000): Promise<CommandResult & { code: number }> { return new Promise((resolve,reject)=>{const child=spawn(executable,args,{shell:false,windowsHide:true,env:{...process.env,GIT_TERMINAL_PROMPT:'0'},stdio:['ignore','pipe','pipe'],timeout:timeoutMs});let stdout='',stderr='';child.stdout.on('data',c=>stdout+=c.toString());child.stderr.on('data',c=>stderr+=c.toString());child.on('error',reject);child.on('close',code=>code!==null&&allowed.includes(code)?resolve({stdout,stderr,code}):reject(new Error(`git command failed: ${stderr.trim().slice(0,1000)}`)));}); }
 }
