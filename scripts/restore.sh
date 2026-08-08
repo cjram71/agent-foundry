@@ -25,7 +25,8 @@ if [[ ! -f .env ]]; then
   echo "restore: .env not found — run this on the Agent Foundry host." >&2
   exit 1
 fi
-set -a; source .env; set +a
+source scripts/load-env.sh
+foundry_load_env .env
 for name in POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB; do
   [[ -n "${!name:-}" ]] || { echo "restore: $name is not set in .env" >&2; exit 1; }
 done
@@ -41,7 +42,11 @@ echo "restore: verifying checksums in $BACKUP_DIR"
 if [[ "$MODE" == "--verify" ]]; then
   CHECK_DB="${POSTGRES_DB}_restore_check"
   echo "restore: drill into throwaway database $CHECK_DB"
-  "${as_admin[@]}" -d postgres -q -v ON_ERROR_STOP=1 \
+  cleanup_check_db() {
+    as_admin -d postgres -q -c "DROP DATABASE IF EXISTS \"$CHECK_DB\"" >/dev/null 2>&1 || true
+  }
+  trap cleanup_check_db EXIT
+  as_admin -d postgres -q -v ON_ERROR_STOP=1 \
     -c "DROP DATABASE IF EXISTS \"$CHECK_DB\"" \
     -c "CREATE DATABASE \"$CHECK_DB\""
   "${RESTORE[@]}" -d "$CHECK_DB" < "$BACKUP_DIR/database.pgdump"
@@ -49,7 +54,8 @@ if [[ "$MODE" == "--verify" ]]; then
     psql -U "$POSTGRES_USER" -d "$CHECK_DB" -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'")
   MIGS=$(docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" foundry_postgres \
     psql -U "$POSTGRES_USER" -d "$CHECK_DB" -tAc 'SELECT count(*) FROM "_prisma_migrations"' 2>/dev/null || echo "n/a")
-  "${as_admin[@]}" -d postgres -q -c "DROP DATABASE \"$CHECK_DB\""
+  as_admin -d postgres -q -c "DROP DATABASE \"$CHECK_DB\""
+  trap - EXIT
   echo "restore: drill OK — $TABLES public tables, $MIGS migrations recorded. Backup is restorable."
   exit 0
 fi
@@ -61,11 +67,11 @@ read -r -p "Type exactly 'restore $POSTGRES_DB' to proceed: " confirmation
 [[ "$confirmation" == "restore $POSTGRES_DB" ]] || { echo "restore: not confirmed — nothing was changed."; exit 1; }
 
 echo "restore: terminating live connections"
-"${as_admin[@]}" -d postgres -q \
+as_admin -d postgres -q \
   -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$POSTGRES_DB' AND pid <> pg_backend_pid()"
 
 echo "restore: dropping and recreating \"$POSTGRES_DB\""
-"${as_admin[@]}" -d postgres -q -v ON_ERROR_STOP=1 \
+as_admin -d postgres -q -v ON_ERROR_STOP=1 \
   -c "DROP DATABASE \"$POSTGRES_DB\"" \
   -c "CREATE DATABASE \"$POSTGRES_DB\""
 

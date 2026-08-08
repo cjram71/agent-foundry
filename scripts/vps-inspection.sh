@@ -23,7 +23,8 @@ run()  { # run cmd, capture output into report, never fail the script
 # Source .env into the shell if present, without printing any values.
 ENV_FILE="$REPO_DIR/.env"
 if [[ -f "$ENV_FILE" ]]; then
-  set -a; . "$ENV_FILE"; set +a
+  source "$REPO_DIR/scripts/load-env.sh"
+  foundry_load_env "$ENV_FILE"
 fi
 
 : >"$REPORT"

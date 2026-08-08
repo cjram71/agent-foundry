@@ -133,27 +133,46 @@ export async function runValidationPipeline(options: PipelineOptions): Promise<V
   return { ok: true, stages };
 }
 
-/** Derive the allowlisted validation commands from package.json scripts in
- *  canonical order, with hard bounds on a file the task influenced. */
+export type ValidationAdapter = 'node' | 'static-site';
+
+export interface ValidationPlan {
+  adapter: ValidationAdapter;
+  install: boolean;
+  commands: ValidationCommand[];
+}
+
+const STATIC_HTML_CHECK = `const f=require('fs'),p=require('path'),h=f.readFileSync('index.html','utf8');if(!/<html[\\s>]/i.test(h)||!/<\\/html>/i.test(h))throw Error('invalid HTML document');for(const m of h.matchAll(/(?:src|href)=["']([^"'#?:]+)["']/gi)){const x=m[1].replace(/^\\//,'').split('?')[0];if(x&&!f.existsSync(p.resolve(x)))throw Error('missing local asset: '+x)}`;
+
+/** Select a deterministic validation adapter from files that actually exist.
+ * Model output never controls these commands. */
+export async function deriveValidationPlan(repoPath: string): Promise<ValidationPlan> {
+  let raw: string | undefined;
+  try { raw = await fs.readFile(path.join(repoPath, 'package.json'), 'utf8'); } catch {}
+  if (raw !== undefined) {
+    if (Buffer.byteLength(raw, 'utf8') > MAX_PACKAGE_JSON_BYTES) throw new Error('package.json exceeds the 1 MB validation bound');
+    let parsed: unknown;
+    try { parsed = JSON.parse(raw); } catch { throw new Error('package.json is not valid JSON'); }
+    const scripts = (parsed as { scripts?: unknown }).scripts;
+    if (!scripts || typeof scripts !== 'object' || Array.isArray(scripts)) throw new Error('Repository has no allowlisted validation scripts');
+    const scriptNames = Object.keys(scripts as Record<string, unknown>);
+    if (scriptNames.length > MAX_SCRIPTS) throw new Error(`package.json declares more than ${MAX_SCRIPTS} scripts`);
+    const names = SCRIPT_ALLOWLIST.filter(name => Object.prototype.hasOwnProperty.call(scripts, name));
+    if (!names.length) throw new Error('Repository has no allowlisted validation scripts');
+    return { adapter: 'node', install: true, commands: names.map(name => ({ executable: 'npm' as const, args: ['run', name] })) };
+  }
+
+  try { await fs.access(path.join(repoPath, 'index.html')); }
+  catch { throw new Error('Repository has no package.json and no index.html; no supported validation adapter'); }
+  const entries = await fs.readdir(repoPath, { recursive: true });
+  const javascript = entries.filter(value => /\.m?js$/i.test(value) && !value.split(path.sep).some(part => ['node_modules', '.git', 'dist', '.next'].includes(part))).sort().slice(0, 6);
+  const commands: ValidationCommand[] = [
+    { executable: 'node', args: ['-e', STATIC_HTML_CHECK] },
+    ...javascript.map(file => ({ executable: 'node' as const, args: ['--check', file] })),
+  ];
+  return { adapter: 'static-site', install: false, commands };
+}
+
+/** Compatibility helper for callers that only need the command list. */
 export async function deriveValidationCommands(repoPath: string): Promise<ValidationCommand[]> {
-  let raw: string;
-  try {
-    raw = await fs.readFile(path.join(repoPath, 'package.json'), 'utf8');
-  } catch {
-    throw new Error('Repository has no package.json; no allowlisted validation scripts');
-  }
-  if (Buffer.byteLength(raw, 'utf8') > MAX_PACKAGE_JSON_BYTES) throw new Error('package.json exceeds the 1 MB validation bound');
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new Error('package.json is not valid JSON');
-  }
-  const scripts = (parsed as { scripts?: unknown }).scripts;
-  if (!scripts || typeof scripts !== 'object' || Array.isArray(scripts)) throw new Error('Repository has no allowlisted validation scripts');
-  const scriptNames = Object.keys(scripts as Record<string, unknown>);
-  if (scriptNames.length > MAX_SCRIPTS) throw new Error(`package.json declares more than ${MAX_SCRIPTS} scripts`);
-  const names = SCRIPT_ALLOWLIST.filter((name) => Object.prototype.hasOwnProperty.call(scripts, name));
-  if (!names.length) throw new Error('Repository has no allowlisted validation scripts');
-  return names.map((name) => ({ executable: 'npm' as const, args: ['run', name] }));
+  return (await deriveValidationPlan(repoPath)).commands;
 }

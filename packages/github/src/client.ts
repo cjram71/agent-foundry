@@ -29,6 +29,25 @@ export type PushTarget = {
   forked: boolean;
 };
 
+
+export type RepositoryProfile = {
+  stack: 'node' | 'python' | 'static-site' | 'unknown';
+  files: string[];
+  manifests: string[];
+  validation: string;
+};
+
+type GitTreeResponse = { tree?: Array<{ path?: unknown; type?: unknown }> };
+
+export function profileRepositoryPaths(paths: string[]): RepositoryProfile {
+  const files = [...new Set(paths)].sort().slice(0, 500);
+  const lower = new Set(files.map(value => value.toLowerCase()));
+  const manifests = files.filter(value => /(^|\/)(package\.json|pyproject\.toml|requirements\.txt|go\.mod|cargo\.toml|composer\.json)$/i.test(value));
+  if (lower.has('package.json')) return { stack: 'node', files, manifests, validation: 'Run only repository-declared allowlisted npm scripts (lint, typecheck, test, build).' };
+  if (lower.has('pyproject.toml') || lower.has('requirements.txt')) return { stack: 'python', files, manifests, validation: 'Python execution is not enabled by the current secure runner; planning must identify this as an unsupported validation adapter.' };
+  if ([...lower].some(value => /(^|\/)index\.html$/.test(value))) return { stack: 'static-site', files, manifests, validation: 'No dependency install. Use Agent Foundry built-in HTML, local-link, asset-reference, and JavaScript syntax checks.' };
+  return { stack: 'unknown', files, manifests, validation: 'No safe validation adapter detected; request operator configuration instead of inventing commands.' };
+}
 const GITHUB_NAME = /^[A-Za-z0-9_.-]{1,100}$/;
 const WRITABLE_PERMISSIONS = new Set(['ADMIN', 'MAINTAIN', 'WRITE']);
 
@@ -91,6 +110,18 @@ export class GitHubClient {
     };
   }
 
+
+  /** Read a bounded file inventory before planning without executing repository code. */
+  public async profileRepository(repository: Repo, branch: string): Promise<RepositoryProfile> {
+    const fullName = this.assertAllowed(repository);
+    if (!/^[A-Za-z0-9._/-]{1,200}$/.test(branch) || branch.startsWith('-') || branch.includes('..')) throw new Error('Invalid base branch');
+    const result = await this.run('gh', ['api', `repos/${fullName}/git/trees/${encodeURIComponent(branch)}?recursive=1`]);
+    let value: GitTreeResponse;
+    try { value = JSON.parse(result.stdout) as GitTreeResponse; }
+    catch { throw new Error('GitHub returned invalid repository tree metadata'); }
+    if (!Array.isArray(value.tree)) throw new Error('GitHub repository tree is unavailable');
+    return profileRepositoryPaths(value.tree.filter(item => item.type === 'blob' && typeof item.path === 'string').map(item => item.path as string));
+  }
   /**
    * Select where task branches are pushed. Repositories writable by the
    * authenticated account remain direct-write. A READ/TRIAGE repository is

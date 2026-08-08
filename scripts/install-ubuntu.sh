@@ -20,9 +20,8 @@ if [[ ! -f .env ]]; then
 fi
 
 chmod 600 .env
-set -a
-source .env
-set +a
+source scripts/load-env.sh
+foundry_load_env .env
 
 required=(POSTGRES_USER POSTGRES_DB POSTGRES_PASSWORD DATABASE_URL REDIS_PASSWORD JWT_SECRET FOUNDRY_REPO_ROOT AGENT_CATALOG_PATH)
 for name in "${required[@]}"; do

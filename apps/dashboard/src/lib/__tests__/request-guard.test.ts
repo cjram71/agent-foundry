@@ -46,3 +46,8 @@ test('request-guard: path classifiers', () => {
   assert.equal(isAuthApi('/api/tasks'), false);
   assert.equal(isAuthApi('/api/authenticate'), true, 'prefix match keeps any future auth namespace route reachable');
 });
+
+
+test('health endpoint is public for external service monitoring', () => {
+  assert.deepEqual(decideRequest('/api/health', false), { action: 'allow' });
+});

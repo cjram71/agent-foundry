@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
-import { runValidationPipeline, deriveValidationCommands, ValidationStageError, SandboxLike, INSTALL_COMMAND } from './validation';
+import { runValidationPipeline, deriveValidationCommands, deriveValidationPlan, ValidationStageError, SandboxLike, INSTALL_COMMAND } from './validation';
 import { SandboxOptions, ValidationCommand } from './sandbox';
 
 function fakeSandbox(plan: Array<{ success: boolean; exitCode?: number; output?: string }>) {
@@ -129,4 +129,19 @@ test('deriveValidationCommands subsets and bounds malformed manifests', async ()
 
   await fs.rm(dir, { recursive: true, force: true });
   await assert.rejects(deriveValidationCommands(dir), /no package\.json/);
+});
+
+test('deriveValidationPlan supports static sites without dependency installation', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'foundry-static-plan-'));
+  try {
+    await fs.writeFile(path.join(root, 'index.html'), '<!doctype html><html><body><script src="app.js"></script></body></html>');
+    await fs.writeFile(path.join(root, 'app.js'), 'console.log("ok");');
+    const plan = await deriveValidationPlan(root);
+    assert.equal(plan.adapter, 'static-site');
+    assert.equal(plan.install, false);
+    assert.deepEqual(plan.commands.map(command => command.executable), ['node', 'node']);
+    assert.deepEqual(plan.commands[1].args, ['--check', 'app.js']);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
 });
