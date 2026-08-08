@@ -93,7 +93,7 @@ async function executeTask(taskId: string, jobId: string | undefined) {
   const github = new GitHubClient(allowed);
   const repository = { owner: task.project.githubOwner, repo: task.project.githubRepo };
   const run = await prisma.agentRun.create({ data: { taskId, provider: 'google', model: 'gemini-3.6-flash', role: 'coder', promptHash: 'pending', status: 'running' } });
-  let repoPath = ''; let branchName = '';
+  let repoPath = ''; let branchName = ''; let headOwner = '';
   let repairCycle = 0;
   const attempt = await prisma.$transaction(async tx => {
     const previous = await tx.taskAttempt.count({ where: { taskId } });
@@ -112,7 +112,7 @@ async function executeTask(taskId: string, jobId: string | undefined) {
     });
   try {
     await transition('RUNNING', { reason: 'execution started', legacyStatus: 'coding' });
-    ({ repoPath, branchName } = await github.prepareWorkspace(taskId, repository, task.project.defaultBranch));
+    ({ repoPath, branchName, headOwner } = await github.prepareWorkspace(taskId, repository, task.project.defaultBranch));
     await prisma.$transaction([
       prisma.task.update({ where: { id: taskId }, data: { branchName } }),
       prisma.taskAttempt.update({ where: { id: attempt.id }, data: { branchName, workspacePath: repoPath } }),
@@ -193,7 +193,7 @@ async function executeTask(taskId: string, jobId: string | undefined) {
 
     const commit = await github.commitTaskChanges(repoPath, [...changedPaths], task.title);
     await github.pushTaskBranch(repoPath, branchName);
-    const pr = await github.createDraftPullRequest(repository, task.title, branchName, task.project.defaultBranch, `## What changed\n${changeSummary}\n\n## Why\n${task.completeInstruction}\n\n## Validation\n${commands.map(command => `- ${command.executable} ${command.args.join(' ')}`).join('\n')}\n\n## Review\n${reviewFeedback}\n\nThis pull request is a draft. Agent Foundry does not merge automatically.`);
+    const pr = await github.createDraftPullRequest(repository, task.title, branchName, task.project.defaultBranch, `## What changed\n${changeSummary}\n\n## Why\n${task.completeInstruction}\n\n## Validation\n${commands.map(command => `- ${command.executable} ${command.args.join(' ')}`).join('\n')}\n\n## Review\n${reviewFeedback}\n\nThis pull request is a draft. Agent Foundry does not merge automatically.`, headOwner);
     // P13: the success path drives PR_CREATED before opening the final gate.
     // (Pre-P13 this committed a single REVIEWING -> AWAITING_APPROVAL jump
     // that the transition table never contained — transitionTask rejected
