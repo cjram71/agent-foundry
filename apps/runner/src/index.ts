@@ -12,6 +12,7 @@ import { ReviewerAgent } from './reviewer';
 import { SandboxController } from './sandbox';
 import { runValidationPipeline, deriveValidationCommands, ValidationStageError } from './validation';
 import { parseRepairBudget, buildCoderPrompt, buildRepairPrompt, ReviewRejectedError } from './repair';
+import { applyChanges, validateCoderResult, SecurityViolationError, SAFE_EXTENSIONS, BLOCKED_NAMES } from './coder';
 import { createStopSupervisor, deferJobWhileStopped, parseWedgeTimeoutMinutes, WEDGEABLE_STATES } from '@foundry/ops';
 import { estimateUsd, parseRatePerMillion, RATE_ENV } from '@foundry/cost';
 
@@ -25,37 +26,6 @@ if (!apiKey) throw new Error('GEMINI_API_KEY is required for the runner');
 const ai = new GoogleGenAI({ apiKey });
 const MAX_CONTEXT_BYTES = 180_000;
 const MAX_FILE_BYTES = 80_000;
-const SAFE_EXTENSIONS = new Set(['.ts','.tsx','.js','.jsx','.mjs','.cjs','.json','.css','.scss','.md','.html','.yml','.yaml','.toml','.prisma','.sql']);
-const BLOCKED_NAMES = new Set(['.env','.npmrc','.netrc','id_rsa','id_ed25519']);
-
-type Change = { path: string; content: string; reason: string };
-type CoderResult = { summary: string; changes: Change[]; validationNotes: string[] };
-
-function safeRelativePath(value: string): string {
-  const normalized = value.replace(/\\/g, '/');
-  const basename = path.posix.basename(normalized);
-  if (!normalized || normalized.startsWith('/') || normalized.includes('..') || /[\0\r\n]/.test(normalized)) throw new Error('Coder returned an invalid path');
-  if (BLOCKED_NAMES.has(basename) || basename.startsWith('.env.') || /\.(pem|key|p12)$/i.test(basename) || normalized.startsWith('.git/')) throw new Error('Coder attempted to write a protected file');
-  if (!SAFE_EXTENSIONS.has(path.posix.extname(normalized)) && !['Dockerfile','Procfile'].includes(basename)) throw new Error(`Coder returned a disallowed file type: ${normalized}`);
-  return normalized;
-}
-
-function validateCoderResult(value: unknown): CoderResult {
-  if (!value || typeof value !== 'object') throw new Error('Coder response is not an object');
-  const result = value as CoderResult;
-  if (typeof result.summary !== 'string' || result.summary.length < 10 || !Array.isArray(result.changes) || !Array.isArray(result.validationNotes)) throw new Error('Coder response has an invalid shape');
-  if (result.changes.length < 1 || result.changes.length > 20) throw new Error('Coder must change 1-20 files');
-  let total = 0;
-  const seen = new Set<string>();
-  for (const change of result.changes) {
-    if (!change || typeof change.content !== 'string' || typeof change.reason !== 'string') throw new Error('Coder returned an invalid change');
-    change.path = safeRelativePath(change.path);
-    if (seen.has(change.path)) throw new Error(`Coder returned duplicate path ${change.path}`);
-    seen.add(change.path); total += Buffer.byteLength(change.content);
-  }
-  if (total > 500_000) throw new Error('Coder changes exceed the 500 KB limit');
-  return result;
-}
 
 async function repositoryContext(root: string): Promise<string> {
   const chunks: string[] = []; let used = 0;
@@ -84,19 +54,6 @@ async function repositoryContext(root: string): Promise<string> {
   }
   await walk(root);
   return chunks.join('');
-}
-
-async function applyChanges(root: string, changes: Change[]) {
-  const resolvedRoot = await fs.realpath(root);
-  for (const change of changes) {
-    const relative = safeRelativePath(change.path);
-    const target = path.resolve(resolvedRoot, relative);
-    const escaped = path.relative(resolvedRoot, target);
-    if (escaped.startsWith('..') || path.isAbsolute(escaped)) throw new Error('Change escaped the task workspace');
-    await fs.mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
-    try { if ((await fs.lstat(target)).isSymbolicLink()) throw new Error(`Refusing to overwrite symlink ${relative}`); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-    await fs.writeFile(target, change.content, { encoding: 'utf8', mode: 0o600 });
-  }
 }
 
 async function generateCoderResponse(prompt: string) {
@@ -276,9 +233,9 @@ async function executeTask(taskId: string, jobId: string | undefined) {
     // land in INFRASTRUCTURE_FAILED; an exhausted review rejection lands in
     // FAILED with stage 'review' (the transition table has no
     // REVIEWING -> CODE_FAILED edge by design).
-    let terminalState: 'FAILED' | 'CODE_FAILED' | 'INFRASTRUCTURE_FAILED' = 'FAILED';
+    let terminalState: 'FAILED' | 'CODE_FAILED' | 'INFRASTRUCTURE_FAILED' | 'SECURITY_BLOCKED' = 'FAILED';
     let failureStage = repoPath ? 'workspace' : 'setup';
-    let failureKind: 'code' | 'infrastructure' | 'unknown' = 'unknown';
+    let failureKind: 'code' | 'infrastructure' | 'security' | 'unknown' = 'unknown';
     if (error instanceof ValidationStageError) {
       failureStage = `validation:${error.failingStage.stage}`;
       if (error.failingStage.infraFailure) {
@@ -291,6 +248,16 @@ async function executeTask(taskId: string, jobId: string | undefined) {
     } else if (error instanceof ReviewRejectedError) {
       failureStage = 'review';
       failureKind = 'code';
+    } else if (error instanceof SecurityViolationError) {
+      // P16 (docs/THREAT-MODEL.md): a DETERMINISTIC violation of the coder
+      // output invariants — protected file targeted, invalid/escaping path,
+      // disallowed file class, symlink overwrite — quarantines the task in
+      // SECURITY_BLOCKED instead of ordinary failure. No model verdict ever
+      // lands here; SECURITY_BLOCKED is reserved for proof-grade signals so
+      // the operator knows a blocked task needs investigation, not a retry.
+      terminalState = 'SECURITY_BLOCKED';
+      failureStage = 'coder_output';
+      failureKind = 'security';
     }
     await prisma.$transaction(async tx => {
       await tx.agentRun.update({ where: { id: run.id }, data: { status: 'failed', errorInfo: message } });
