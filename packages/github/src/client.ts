@@ -6,10 +6,46 @@ import * as os from 'os';
 type CommandResult = { stdout: string; stderr: string };
 type Repo = { owner: string; repo: string };
 
+type RepositoryView = {
+  defaultBranchRef?: { name?: unknown };
+  isPrivate?: unknown;
+  viewerPermission?: unknown;
+};
+
+export type RepositoryAccess = {
+  connected: boolean;
+  defaultBranch: string;
+  visibility: string;
+  viewerPermission: string;
+  canPush: boolean;
+};
+
+export type PushTarget = {
+  /** Canonical owner/repository receiving the task branch. */
+  fullName: string;
+  /** Owner used to qualify the pull request head. */
+  headOwner: string;
+  /** True when the target is a fork rather than the authorised repository. */
+  forked: boolean;
+};
+
+const GITHUB_NAME = /^[A-Za-z0-9_.-]{1,100}$/;
+const WRITABLE_PERMISSIONS = new Set(['ADMIN', 'MAINTAIN', 'WRITE']);
+
 /** gh prints a variant of this when a PR for the branch already exists. */
 export function isPrAlreadyExistsError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return /already exists/i.test(message);
+}
+
+/** A missing candidate fork is recoverable; auth/network/GraphQL errors are not. */
+export function isRepositoryNotFoundError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /(?:HTTP\s*404|not found|could not resolve to a repository)/i.test(message);
+}
+
+export function canPushWithPermission(permission: unknown): boolean {
+  return typeof permission === 'string' && WRITABLE_PERMISSIONS.has(permission.toUpperCase());
 }
 
 /** Parse `gh pr list --json url` output, accepting only URLs that belong to
@@ -18,7 +54,7 @@ export function parseOpenPrUrlList(stdout: string, fullName: string): string | n
   try {
     const rows = JSON.parse(stdout) as Array<{ url?: unknown }>;
     if (!Array.isArray(rows)) return null;
-    const expected = new RegExp(`^https://github\\.com/${fullName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/pull/\\d+$`, 'i');
+    const expected = pullRequestUrlPattern(fullName);
     const match = rows.find((row) => typeof row?.url === 'string' && expected.test(row.url));
     return match ? (match.url as string) : null;
   } catch {
@@ -26,17 +62,80 @@ export function parseOpenPrUrlList(stdout: string, fullName: string): string | n
   }
 }
 
-export class GitHubClient {
-  constructor(private readonly allowedRepositories: ReadonlySet<string>, private readonly root = process.env.FOUNDRY_REPO_ROOT || path.join(os.homedir(), 'foundry-repos')) {}
+function pullRequestUrlPattern(fullName: string): RegExp {
+  return new RegExp(`^https://github\\.com/${fullName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/pull/\\d+$`, 'i');
+}
 
-  public async checkAccess(repository: Repo): Promise<{ connected: boolean; defaultBranch: string; visibility: string }> {
+export class GitHubClient {
+  constructor(
+    private readonly allowedRepositories: ReadonlySet<string>,
+    private readonly root = process.env.FOUNDRY_REPO_ROOT || path.join(os.homedir(), 'foundry-repos'),
+  ) {}
+
+  public async checkAccess(repository: Repo): Promise<RepositoryAccess> {
     const fullName = this.assertAllowed(repository);
-    const result = await this.run('gh', ['repo', 'view', fullName, '--json', 'defaultBranchRef,visibility']);
-    const value = JSON.parse(result.stdout) as { defaultBranchRef?: { name?: string }; visibility?: string };
-    return { connected: true, defaultBranch: value.defaultBranchRef?.name || 'main', visibility: value.visibility || 'UNKNOWN' };
+    const result = await this.run('gh', ['repo', 'view', fullName, '--json', 'defaultBranchRef,isPrivate,viewerPermission']);
+    let value: RepositoryView;
+    try {
+      value = JSON.parse(result.stdout) as RepositoryView;
+    } catch {
+      throw new Error('GitHub returned invalid repository metadata');
+    }
+    const viewerPermission = typeof value.viewerPermission === 'string' ? value.viewerPermission.toUpperCase() : 'UNKNOWN';
+    return {
+      connected: true,
+      defaultBranch: typeof value.defaultBranchRef?.name === 'string' ? value.defaultBranchRef.name : 'main',
+      visibility: typeof value.isPrivate === 'boolean' ? (value.isPrivate ? 'PRIVATE' : 'PUBLIC') : 'UNKNOWN',
+      viewerPermission,
+      canPush: canPushWithPermission(viewerPermission),
+    };
   }
 
-  public async prepareWorkspace(taskId: string, repository: Repo, baseBranch: string): Promise<{ repoPath: string; branchName: string }> {
+  /**
+   * Select where task branches are pushed. Repositories writable by the
+   * authenticated account remain direct-write. A READ/TRIAGE repository is
+   * executed through a verified, writable fork owned by that account.
+   *
+   * Existing repositories at the expected fork name are never trusted just
+   * because their names match: their parent and viewer permission are checked
+   * before any source or generated changes can be pushed to them.
+   */
+  public async resolvePushTarget(repository: Repo): Promise<PushTarget> {
+    const fullName = this.assertAllowed(repository);
+    const access = await this.checkAccess(repository);
+    if (access.canPush) {
+      return { fullName, headOwner: fullName.split('/')[0], forked: false };
+    }
+
+    const ownerResult = await this.run('gh', ['api', 'user', '--jq', '.login']);
+    const forkOwner = ownerResult.stdout.trim();
+    if (!GITHUB_NAME.test(forkOwner)) throw new Error('GitHub returned an invalid authenticated user login');
+    const forkFullName = `${forkOwner}/${repository.repo}`;
+    if (forkFullName.toLowerCase() === fullName.toLowerCase()) {
+      throw new Error('GitHub reports read-only access to the authenticated account repository');
+    }
+
+    const existing = await this.readForkTarget(forkFullName, fullName);
+    if (existing) return existing;
+
+    try {
+      await this.run('gh', ['repo', 'fork', fullName, '--clone=false', '--remote=false']);
+    } catch (error) {
+      // A concurrent task may have created the same fork after our lookup.
+      // Verify the repository below; every other fork failure remains fatal.
+      if (!isPrAlreadyExistsError(error)) throw error;
+    }
+
+    const created = await this.readForkTarget(forkFullName, fullName);
+    if (!created) throw new Error(`GitHub did not create the expected fork ${forkFullName}`);
+    return created;
+  }
+
+  public async prepareWorkspace(
+    taskId: string,
+    repository: Repo,
+    baseBranch: string,
+  ): Promise<{ repoPath: string; branchName: string; headOwner: string }> {
     const fullName = this.assertAllowed(repository);
     const safeTask = taskId.replace(/[^a-zA-Z0-9-]/g, '-').slice(0, 48);
     if (!safeTask) throw new Error('Invalid task identifier');
@@ -44,14 +143,23 @@ export class GitHubClient {
     const repoPath = path.join(this.root, safeTask);
     const relative = path.relative(path.resolve(this.root), path.resolve(repoPath));
     if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('Workspace escaped the configured root');
+
+    // Resolve and, if required, create the fork before materializing a local
+    // workspace. A setup failure therefore cannot leave a clone whose origin
+    // points at a read-only or unrelated repository.
+    const pushTarget = await this.resolvePushTarget(repository);
     await fs.mkdir(this.root, { recursive: true, mode: 0o700 });
     await fs.rm(repoPath, { recursive: true, force: true });
     await this.run('gh', ['repo', 'clone', fullName, repoPath, '--', '--branch', baseBranch, '--single-branch']);
+    if (pushTarget.forked) {
+      await this.run('git', ['-C', repoPath, 'remote', 'rename', 'origin', 'upstream']);
+      await this.run('git', ['-C', repoPath, 'remote', 'add', 'origin', `https://github.com/${pushTarget.fullName}.git`]);
+    }
     await this.run('git', ['-C', repoPath, 'config', 'user.name', process.env.GIT_AUTHOR_NAME || 'Agent Foundry']);
     await this.run('git', ['-C', repoPath, 'config', 'user.email', process.env.GIT_AUTHOR_EMAIL || 'agent-foundry@users.noreply.github.com']);
     const branchName = this.generateBranchName(taskId);
     await this.run('git', ['-C', repoPath, 'switch', '-c', branchName]);
-    return { repoPath, branchName };
+    return { repoPath, branchName, headOwner: pushTarget.headOwner };
   }
 
   public async pushTaskBranch(repoPath: string, branchName: string): Promise<void> {
@@ -76,27 +184,38 @@ export class GitHubClient {
     await this.run('git', ['-C', repoPath, 'commit', '-m', message.slice(0, 200)]);
     return (await this.run('git', ['-C', repoPath, 'rev-parse', '--short=12', 'HEAD'])).stdout.trim();
   }
-  /** Open a draft PR. Idempotent by branch (P13): if a previous delivery
-   *  opened the PR and then crashed before the database could record it, the
-   *  replay must not fail on "already exists" — it adopts the open PR. */
-  public async createDraftPullRequest(repository: Repo, title: string, branchName: string, baseBranch: string, body: string): Promise<{ url: string }> {
-    const fullName = this.assertAllowed(repository); this.assertTaskBranch(branchName);
+
+  /** Open a draft PR. Idempotent by qualified head (P13/P18): if a previous
+   *  delivery opened the PR and then crashed before the database could record
+   *  it, the replay adopts the open PR from the same direct repo or fork. */
+  public async createDraftPullRequest(
+    repository: Repo,
+    title: string,
+    branchName: string,
+    baseBranch: string,
+    body: string,
+    headOwner = repository.owner,
+  ): Promise<{ url: string }> {
+    const fullName = this.assertAllowed(repository);
+    const qualifiedHead = this.qualifyHead(headOwner, branchName);
     try {
-      const result = await this.run('gh', ['pr', 'create', '--repo', fullName, '--head', branchName, '--base', baseBranch, '--title', title.slice(0, 240), '--body', body.slice(0, 60000), '--draft']);
-      const url = result.stdout.trim(); if (!/^https:\/\/github\.com\//.test(url)) throw new Error('GitHub did not return a pull request URL');
+      const result = await this.run('gh', ['pr', 'create', '--repo', fullName, '--head', qualifiedHead, '--base', baseBranch, '--title', title.slice(0, 240), '--body', body.slice(0, 60000), '--draft']);
+      const url = result.stdout.trim();
+      if (!pullRequestUrlPattern(fullName).test(url)) throw new Error('GitHub did not return a pull request URL for the authorized repository');
       return { url };
     } catch (error) {
       if (!isPrAlreadyExistsError(error)) throw error;
-      const existing = await this.findOpenPullRequest(repository, branchName);
+      const existing = await this.findOpenPullRequest(repository, branchName, headOwner);
       if (existing) return { url: existing };
       throw error;
     }
   }
 
-  /** The URL of the open PR for a task branch, or null. */
-  public async findOpenPullRequest(repository: Repo, branchName: string): Promise<string | null> {
-    const fullName = this.assertAllowed(repository); this.assertTaskBranch(branchName);
-    const result = await this.run('gh', ['pr', 'list', '--repo', fullName, '--head', branchName, '--state', 'open', '--json', 'url', '--limit', '1']);
+  /** The URL of the open PR for a task branch (including fork owner), or null. */
+  public async findOpenPullRequest(repository: Repo, branchName: string, headOwner = repository.owner): Promise<string | null> {
+    const fullName = this.assertAllowed(repository);
+    const qualifiedHead = this.qualifyHead(headOwner, branchName);
+    const result = await this.run('gh', ['pr', 'list', '--repo', fullName, '--head', qualifiedHead, '--state', 'open', '--json', 'url', '--limit', '1']);
     return parseOpenPrUrlList(result.stdout, fullName);
   }
 
@@ -105,9 +224,36 @@ export class GitHubClient {
     return `foundry/task-${clean}-${Date.now().toString(36)}`;
   }
 
+  private async readForkTarget(forkFullName: string, sourceFullName: string): Promise<PushTarget | null> {
+    let result: CommandResult;
+    try {
+      result = await this.run('gh', ['repo', 'view', forkFullName, '--json', 'nameWithOwner,isFork,parent,viewerPermission']);
+    } catch (error) {
+      if (isRepositoryNotFoundError(error)) return null;
+      throw error;
+    }
+
+    let value: { nameWithOwner?: unknown; isFork?: unknown; parent?: { nameWithOwner?: unknown } | null; viewerPermission?: unknown };
+    try {
+      value = JSON.parse(result.stdout) as typeof value;
+    } catch {
+      throw new Error(`GitHub returned invalid metadata for fork ${forkFullName}`);
+    }
+    const actualName = typeof value.nameWithOwner === 'string' ? value.nameWithOwner : '';
+    const parentName = typeof value.parent?.nameWithOwner === 'string' ? value.parent.nameWithOwner : '';
+    if (actualName.toLowerCase() !== forkFullName.toLowerCase() || value.isFork !== true || parentName.toLowerCase() !== sourceFullName.toLowerCase()) {
+      throw new Error(`Refusing unrelated repository at expected fork name ${forkFullName}`);
+    }
+    if (!canPushWithPermission(value.viewerPermission)) {
+      throw new Error(`Authenticated GitHub account cannot push to fork ${forkFullName}`);
+    }
+    return { fullName: actualName, headOwner: actualName.split('/')[0], forked: true };
+  }
+
   private assertAllowed({ owner, repo }: Repo): string {
-    if (!/^[A-Za-z0-9_.-]{1,100}$/.test(owner) || !/^[A-Za-z0-9_.-]{1,100}$/.test(repo)) throw new Error('Invalid repository name');
-    const fullName = `${owner}/${repo}`; const match = [...this.allowedRepositories].find(value => value.toLowerCase() === fullName.toLowerCase());
+    if (!GITHUB_NAME.test(owner) || !GITHUB_NAME.test(repo)) throw new Error('Invalid repository name');
+    const fullName = `${owner}/${repo}`;
+    const match = [...this.allowedRepositories].find(value => value.toLowerCase() === fullName.toLowerCase());
     if (!match) throw new Error('Repository is not authorised for Agent Foundry');
     return match;
   }
@@ -117,7 +263,27 @@ export class GitHubClient {
     if (!normalized || normalized.startsWith('/') || normalized.includes('..') || /[\0\r\n]/.test(normalized)) throw new Error('Invalid changed file path');
     return normalized;
   }
-  private assertTaskBranch(branch: string) { if (!/^foundry\/task-[a-z0-9-]+-[a-z0-9]+$/.test(branch)) throw new Error('Only Agent Foundry task branches may be pushed'); }
-  private async assertWorkspace(repoPath: string) { const relative = path.relative(path.resolve(this.root), await fs.realpath(repoPath)); if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('Repository is outside the Foundry workspace root'); }
-  protected run(executable: 'gh'|'git', args: string[], timeoutMs = 120000): Promise<CommandResult> { return new Promise((resolve,reject)=>{const child=spawn(executable,args,{shell:false,windowsHide:true,env:{...process.env,GH_PROMPT_DISABLED:'1',GIT_TERMINAL_PROMPT:'0'},stdio:['ignore','pipe','pipe'],timeout:timeoutMs});let stdout='',stderr='';child.stdout.on('data',c=>stdout+=c.toString());child.stderr.on('data',c=>stderr+=c.toString());child.on('error',reject);child.on('close',code=>code===0?resolve({stdout,stderr}):reject(new Error(`${executable} command failed: ${stderr.trim().slice(0,1000)}`)));}); }  protected runWithExitCodes(executable: 'git', args: string[], allowed: number[], timeoutMs = 120000): Promise<CommandResult & { code: number }> { return new Promise((resolve,reject)=>{const child=spawn(executable,args,{shell:false,windowsHide:true,env:{...process.env,GIT_TERMINAL_PROMPT:'0'},stdio:['ignore','pipe','pipe'],timeout:timeoutMs});let stdout='',stderr='';child.stdout.on('data',c=>stdout+=c.toString());child.stderr.on('data',c=>stderr+=c.toString());child.on('error',reject);child.on('close',code=>code!==null&&allowed.includes(code)?resolve({stdout,stderr,code}):reject(new Error(`git command failed: ${stderr.trim().slice(0,1000)}`)));}); }
+
+  private qualifyHead(owner: string, branch: string): string {
+    if (!GITHUB_NAME.test(owner)) throw new Error('Invalid pull request head owner');
+    this.assertTaskBranch(branch);
+    return `${owner}:${branch}`;
+  }
+
+  private assertTaskBranch(branch: string) {
+    if (!/^foundry\/task-[a-z0-9-]+-[a-z0-9]+$/.test(branch)) throw new Error('Only Agent Foundry task branches may be pushed');
+  }
+
+  private async assertWorkspace(repoPath: string) {
+    const relative = path.relative(path.resolve(this.root), await fs.realpath(repoPath));
+    if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('Repository is outside the Foundry workspace root');
+  }
+
+  protected run(executable: 'gh'|'git', args: string[], timeoutMs = 120000): Promise<CommandResult> {
+    return new Promise((resolve,reject)=>{const child=spawn(executable,args,{shell:false,windowsHide:true,env:{...process.env,GH_PROMPT_DISABLED:'1',GIT_TERMINAL_PROMPT:'0'},stdio:['ignore','pipe','pipe'],timeout:timeoutMs});let stdout='',stderr='';child.stdout.on('data',c=>stdout+=c.toString());child.stderr.on('data',c=>stderr+=c.toString());child.on('error',reject);child.on('close',code=>code===0?resolve({stdout,stderr}):reject(new Error(`${executable} command failed: ${stderr.trim().slice(0,1000)}`)));});
+  }
+
+  protected runWithExitCodes(executable: 'git', args: string[], allowed: number[], timeoutMs = 120000): Promise<CommandResult & { code: number }> {
+    return new Promise((resolve,reject)=>{const child=spawn(executable,args,{shell:false,windowsHide:true,env:{...process.env,GIT_TERMINAL_PROMPT:'0'},stdio:['ignore','pipe','pipe'],timeout:timeoutMs});let stdout='',stderr='';child.stdout.on('data',c=>stdout+=c.toString());child.stderr.on('data',c=>stderr+=c.toString());child.on('error',reject);child.on('close',code=>code!==null&&allowed.includes(code)?resolve({stdout,stderr,code}):reject(new Error(`git command failed: ${stderr.trim().slice(0,1000)}`)));});
+  }
 }

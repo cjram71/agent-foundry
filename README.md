@@ -114,7 +114,7 @@ Agent Foundry attempts Gemini first and uses Ollama only for quota, rate-limit, 
 
 ## GitHub access
 
-The runtime uses GitHub CLI for repository checks, clones, branches, pushes, and draft pull requests. Authenticate a dedicated service account or GitHub App with only the required repositories and permissions. Agent Foundry never automatically merges.
+The runtime uses GitHub CLI for repository checks, clones, branches, pushes, and draft pull requests. Authenticate a dedicated service account or GitHub App with only the required repositories and permissions. Repositories writable by that identity use direct task branches; read-only external repositories use a verified fork owned by the authenticated user (see [docs/FORK-EXECUTION.md](docs/FORK-EXECUTION.md)). Agent Foundry never automatically merges.
 
 ## Services
 
