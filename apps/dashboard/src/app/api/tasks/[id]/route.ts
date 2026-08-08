@@ -5,6 +5,7 @@ import { getSession, isSameOrigin } from '@/lib/auth';
 import { enqueueExecution, enqueuePlan } from '@/lib/queue';
 import { transitionTask, emitTaskEvent } from '@foundry/state-machine';
 import { classifyTaskRisk, evaluateTaskAgainstPolicy, asDeclaredRisk } from '@foundry/policy';
+import { parseManagerPlan, buildTaskDrafts } from '@foundry/manager';
 import { loadActivePolicy } from '@/lib/policy';
 type PullRequestStatus = { state: string; mergedAt: string | null; isDraft: boolean; statusCheckRollup: Array<{ status?: string; conclusion?: string; state?: string }> };
 function runGitHub(args: string[]): Promise<string> { return new Promise((resolve,reject)=>{const child=spawn('gh',args,{shell:false,windowsHide:true,env:{...process.env,GH_PROMPT_DISABLED:'1'},stdio:['ignore','pipe','pipe'],timeout:30000});let stdout='',stderr='';child.stdout.on('data',c=>stdout+=c.toString());child.stderr.on('data',c=>stderr+=c.toString());child.on('error',reject);child.on('close',code=>code===0?resolve(stdout):reject(new Error(stderr.slice(0,500))));}); }
@@ -82,7 +83,31 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       if (approved && evaluationOnly) await emitTaskEvent(tx, { taskId: id, type: 'task_completed', actor: auth.session!.userId, actorType: 'human', payload: { via: 'manager_evaluation' } });
       await tx.auditEvent.create({ data: { actor: auth.session!.userId, action: approved ? 'task.plan_approved' : 'task.plan_rejected', target: id, result: 'success' } });
     });
-    if (approved && evaluationOnly) return NextResponse.json({ message: 'AI Project Manager evaluation approved and completed. No coding work was executed.' });
+    if (approved && evaluationOnly) {
+      // Deterministic Manager: convert the approved evaluation plan into
+      // policy-screened DRAFT tasks (see docs/MANAGER.md). Best-effort in a
+      // separate transaction — evaluation completion is already committed
+      // and must not depend on draft creation.
+      let draftsCreated = 0; let draftsSkipped = 0;
+      try {
+        const plannerRun = await prisma.agentRun.findFirst({ where: { taskId: id, role: 'planner', status: 'success' }, orderBy: { createdAt: 'desc' }, select: { outputSummary: true } });
+        const parse = parseManagerPlan(plannerRun?.outputSummary ?? null);
+        const managerPolicy = await loadActivePolicy(prisma, current.projectId);
+        const draftPlan = buildTaskDrafts({ parse, projectName: current.project.name, evaluationTaskId: id, policy: managerPolicy });
+        draftsCreated = draftPlan.drafts.length; draftsSkipped = draftPlan.skipped.length;
+        await prisma.$transaction(async tx => {
+          for (const draft of draftPlan.drafts) {
+            const created = await tx.task.create({ data: { projectId: current.projectId, title: draft.title, completeInstruction: draft.completeInstruction, riskLevel: draft.effectiveRisk } });
+            await emitTaskEvent(tx, { taskId: created.id, type: 'task_created', actor: 'ai-project-manager', actorType: 'system', payload: { evaluationTaskId: id, source: 'manager_evaluation' } });
+          }
+          await tx.auditEvent.create({ data: { actor: 'ai-project-manager', action: 'manager.drafts_created', target: current.projectId, result: 'success', metadata: { evaluationTaskId: id, created: draftPlan.drafts.length, skipped: draftPlan.skipped.length, droppedAtParse: draftPlan.droppedAtParse, parseFailed: !parse, skippedRules: [...new Set(draftPlan.skipped.flatMap((s) => s.matchedRules))] } } });
+        });
+      } catch (error) {
+        await prisma.auditEvent.create({ data: { actor: 'ai-project-manager', action: 'manager.drafts_created', target: current.projectId, result: 'failed', metadata: { evaluationTaskId: id, error: error instanceof Error ? error.message.slice(0, 500) : 'unknown' } } }).catch(() => {});
+      }
+      const skippedNote = draftsSkipped ? ` ${draftsSkipped} steps were blocked by the project policy and were not created.` : '';
+      return NextResponse.json({ message: `AI Project Manager evaluation approved and completed. ${draftsCreated} draft tasks were created for your review.${skippedNote} No coding work was executed.` });
+    }
     if (approved) {
       try {
         const job = await enqueueExecution(id);
