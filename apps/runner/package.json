@@ -8,7 +8,9 @@
     "test": "npm run build && node --test dist/*.test.js"
   },
   "dependencies": {
+    "@foundry/cost": "0.1.0",
     "@foundry/github": "0.1.0",
+    "@foundry/ops": "0.1.0",
     "@foundry/state-machine": "0.1.0",
     "@google/genai": "^2.15.0",
     "@prisma/client": "^6.19.3",

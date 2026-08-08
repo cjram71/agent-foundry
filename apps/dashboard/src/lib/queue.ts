@@ -28,6 +28,11 @@ export function getTaskQueue() {
   return globalForQueue.foundryQueue;
 }
 
+/** Shared Redis handle for non-queue flags (emergency stop, P14). */
+export function getRedis() {
+  return connection();
+}
+
 export function getExecutionQueue() {
   if (!globalForQueue.executionQueue) globalForQueue.executionQueue = new Queue('foundry-execution', { connection: connection() });
   return globalForQueue.executionQueue;

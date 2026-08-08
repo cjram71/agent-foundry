@@ -5,12 +5,17 @@ import { parseProjectInput, parsePublicUrl, projectTypes } from '@/lib/validatio
 import { enqueuePlan } from '@/lib/queue';
 import { transitionTask, emitTaskEvent } from '@foundry/state-machine';
 import { isPolicyCeiling } from '@foundry/policy';
+import { checkSpendGuard } from '@/lib/cost';
 
 async function requireAdmin(request?: Request) { const session=await getSession();if(!session)return{error:NextResponse.json({error:'Unauthorized'},{status:401})};if(session.role!=='ADMIN')return{error:NextResponse.json({error:'Forbidden'},{status:403})};if(request&&!isSameOrigin(request))return{error:NextResponse.json({error:'Invalid origin'},{status:403})};return{session}; }
 export async function GET(){const auth=await requireAdmin();if(auth.error)return auth.error;return NextResponse.json(await prisma.project.findMany({orderBy:{createdAt:'desc'},include:{_count:{select:{tasks:true}}}}));}
 export async function POST(request:Request){try{const auth=await requireAdmin(request);if(auth.error)return auth.error;const data=parseProjectInput(await request.json());const existing=await prisma.project.findFirst({where:{githubOwner:{equals:data.githubOwner,mode:'insensitive'},githubRepo:{equals:data.githubRepository,mode:'insensitive'}}});if(existing)return NextResponse.json({error:'This GitHub repository is already registered',projectId:existing.id},{status:409});const project=await prisma.$transaction(async tx=>{const created=await tx.project.create({data:{name:data.name,githubOwner:data.githubOwner,githubRepo:data.githubRepository,defaultBranch:data.defaultBranch,authorisedStatus:false,spendingLimit:data.spendingLimit,projectType:data.projectType,productionUrl:data.productionUrl},include:{_count:{select:{tasks:true}}}});await tx.projectPolicy.create({data:{projectId:created.id,version:1,active:true,createdBy:auth.session!.userId}});await tx.auditEvent.create({data:{actor:auth.session!.userId,action:'project.created',target:created.id,result:'success',metadata:{repository:`${created.githubOwner}/${created.githubRepo}`,projectType:created.projectType,productionUrl:created.productionUrl}}});return created;});return NextResponse.json(project,{status:201});}catch(error){return NextResponse.json({error:error instanceof Error?error.message:'Failed to create project'},{status:400});}}
 export async function PATCH(request:Request){try{const auth=await requireAdmin(request);if(auth.error)return auth.error;const body=await request.json();if(typeof body.id!=='string')return NextResponse.json({error:'Project id is required'},{status:400});if(body.action==='authorize'||body.action==='deauthorize'){
   const authorisedStatus=body.action==='authorize';
+  if(authorisedStatus){
+    const spend=await checkSpendGuard(body.id);
+    if(!spend.allowed){await prisma.auditEvent.create({data:{actor:auth.session!.userId,action:'cost.spend_blocked',target:body.id,result:'rejected',metadata:{stage:'authorize_manager_evaluation',spendUsd:spend.spendUsd,limitUsd:spend.limitUsd}}});return NextResponse.json({error:spend.reason},{status:409});}
+  }
   const project=await prisma.project.update({where:{id:body.id},data:{authorisedStatus},include:{_count:{select:{tasks:true}}}});
   await prisma.auditEvent.create({data:{actor:auth.session!.userId,action:authorisedStatus?'project.authorized':'project.deauthorized',target:project.id,result:'success'}});
   let managerTaskId:string|undefined;
@@ -25,7 +30,16 @@ export async function PATCH(request:Request){try{const auth=await requireAdmin(r
     }
   }
   return NextResponse.json({...project,managerTaskId});
-}if(body.action==='update_policy'){
+}if(body.action==='update_spending_limit'){
+  const spendingLimit=Number(body.spendingLimit);
+  if(!Number.isFinite(spendingLimit)||spendingLimit<0||spendingLimit>100000)throw new Error('Spending limit must be a number between 0 and 100000 (0 disables the brake)');
+  const before=await prisma.project.findUnique({where:{id:body.id},select:{spendingLimit:true}});
+  if(!before)return NextResponse.json({error:'Project not found'},{status:404});
+  const project=await prisma.project.update({where:{id:body.id},data:{spendingLimit},include:{_count:{select:{tasks:true}}}});
+  await prisma.auditEvent.create({data:{actor:auth.session!.userId,action:'project.spending_limit_updated',target:project.id,result:'success',metadata:{previousLimit:before.spendingLimit,newLimit:spendingLimit}}});
+  return NextResponse.json(project);
+}
+if(body.action==='update_policy'){
   if(!isPolicyCeiling(body.maxTaskRisk))return NextResponse.json({error:"maxTaskRisk must be 'low', 'medium', or 'high'. Prohibited work is never allowed and cannot be configured."},{status:400});
   const exists=await prisma.project.findUnique({where:{id:body.id},select:{id:true}});if(!exists)return NextResponse.json({error:'Project not found'},{status:404});
   const policy=await prisma.$transaction(async tx=>{

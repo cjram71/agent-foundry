@@ -2,19 +2,25 @@
   "files": [],
   "references": [
     {
+      "path": "./packages/cost"
+    },
+    {
       "path": "./packages/database"
     },
     {
       "path": "./packages/github"
     },
     {
-      "path": "./packages/state-machine"
+      "path": "./packages/manager"
+    },
+    {
+      "path": "./packages/ops"
     },
     {
       "path": "./packages/policy"
     },
     {
-      "path": "./packages/manager"
+      "path": "./packages/state-machine"
     },
     {
       "path": "./apps/orchestrator"

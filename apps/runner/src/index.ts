@@ -12,6 +12,8 @@ import { ReviewerAgent } from './reviewer';
 import { SandboxController } from './sandbox';
 import { runValidationPipeline, deriveValidationCommands, ValidationStageError } from './validation';
 import { parseRepairBudget, buildCoderPrompt, buildRepairPrompt, ReviewRejectedError } from './repair';
+import { createStopSupervisor, deferJobWhileStopped, parseWedgeTimeoutMinutes, WEDGEABLE_STATES } from '@foundry/ops';
+import { estimateUsd, parseRatePerMillion, RATE_ENV } from '@foundry/cost';
 
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 dotenv.config({ path: path.resolve(__dirname, '../../../packages/database/.env') });
@@ -264,6 +266,7 @@ async function executeTask(taskId: string, jobId: string | undefined) {
       await emitTaskEvent(tx, { taskId, type: 'final_approval_requested', actor: 'runner', actorType: 'worker', attemptId: attempt.id, correlationId: jobId, payload: { gate: 'merge', pullRequestUrl: pr.url } });
       await tx.auditEvent.create({ data: { actor: 'runner', action: 'task.draft_pr_opened', target: taskId, result: 'success', metadata: { jobId, branchName, commit, pullRequestUrl: pr.url, automaticMerge: false } } });
     });
+    await persistCostEstimate(taskId).catch(() => {});
     return { pullRequestUrl: pr.url, branchName, commit };
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0,4000) : 'Unknown runner error';
@@ -307,14 +310,77 @@ async function executeTask(taskId: string, jobId: string | undefined) {
       await emitTaskEvent(tx, { taskId, type: 'task_failed', actor: 'runner', actorType: 'worker', attemptId: attempt.id, correlationId: jobId, payload: { stage: failureStage, kind: failureKind, repairCycles: repairCycle, error: message.slice(0, 1000) } });
       await tx.auditEvent.create({ data: { actor: 'runner', action: 'task.execution_failed', target: taskId, result: 'failed', metadata: { jobId, stage: failureStage, kind: failureKind, repairCycles: repairCycle } } });
     });
+    await persistCostEstimate(taskId).catch(() => {});
     throw error;
   }
 }
 
+/**
+ * P14 wedge sweeper (docs/OPERATIONS.md): BullMQ cannot recover an
+ * attempts:1 execution job whose process died mid-flight — the job is
+ * marked stalled/failed while the task stays in an active state forever.
+ * Anything silent past WEDGE_TIMEOUT_MINUTES is recovered to
+ * INFRASTRUCTURE_FAILED. transitionTask's conditional update makes the
+ * sweep safe against a racing live worker; QUEUED/PLANNING are never
+ * swept (their jobs are durable and a restarted worker resumes them).
+ */
+async function sweepWedgedTasks(now = new Date()): Promise<number> {
+  const timeoutMs = parseWedgeTimeoutMinutes(process.env.WEDGE_TIMEOUT_MINUTES) * 60_000;
+  const cutoff = new Date(now.getTime() - timeoutMs);
+  const stuck = await prisma.task.findMany({
+    where: { state: { in: [...WEDGEABLE_STATES] }, updatedAt: { lt: cutoff } },
+    select: { id: true, state: true, updatedAt: true, currentAttemptId: true },
+    take: 25,
+  });
+  let recovered = 0;
+  for (const task of stuck) {
+    try {
+      await prisma.$transaction(async tx => {
+        await transitionTask(tx, {
+          taskId: task.id, to: 'INFRASTRUCTURE_FAILED', actor: 'wedge-sweeper', actorType: 'system',
+          reason: `wedged in ${task.state}: no state progress for over ${Math.round(timeoutMs / 60000)} minutes (worker presumed dead)`, legacyStatus: 'failed',
+          metadata: { wedgedState: task.state , staleMinutes: Math.round((now.getTime() - task.updatedAt.getTime()) / 60000) },
+        });
+        if (task.currentAttemptId) await tx.taskAttempt.updateMany({ where: { id: task.currentAttemptId, status: 'running' }, data: { status: 'failed', endedAt: now, outcomeSummary: 'Recovered by the wedge sweeper after the worker stopped making progress' } });
+        await emitTaskEvent(tx, { taskId: task.id, type: 'task_failed', actor: 'wedge-sweeper', actorType: 'system', payload: { stage: 'sweep', kind: 'infrastructure', wedgedState: task.state } });
+        await tx.auditEvent.create({ data: { actor: 'wedge-sweeper', action: 'task.wedge_recovered', target: task.id, result: 'success', metadata: { wedgedState: task.state } } });
+      });
+      recovered += 1;
+      console.warn(`[Sweeper] recovered wedged task ${task.id} (was ${task.state})`);
+    } catch (error) {
+      // A live worker moved the task between the query and the sweep — the
+      // machine records the conflict; nothing to do.
+      console.warn(`[Sweeper] skipped ${task.id}:`, error instanceof Error ? error.message : error);
+    }
+  }
+  return recovered;
+}
+
+/** P14 cost accounting: persist the priced-token estimate at terminal
+ *  points. Unset rate persists $0 by design (accounting without teeth —
+ *  the health endpoint surfaces the missing configuration). */
+async function persistCostEstimate(taskId: string): Promise<void> {
+  const rate = parseRatePerMillion(process.env[RATE_ENV]);
+  const sum = await prisma.agentRun.aggregate({ _sum: { tokenUsage: true }, where: { taskId, provider: 'google' } });
+  await prisma.task.update({ where: { id: taskId }, data: { estimatedCost: estimateUsd(sum._sum.tokenUsage ?? 0, rate) } });
+}
+
 const worker = new Worker('foundry-execution', async job => {
   if (job.data.action !== 'execute' || typeof job.data.taskId !== 'string') throw new UnrecoverableError('Unsupported execution job');
+  // Emergency stop (P14): re-park instead of executing when the flag is
+  // set. Check/deferral failures propagate (fail-closed inside deferJobWhileStopped).
+  if (await deferJobWhileStopped(connection, job)) {
+    console.log(`[Execution ${job.id}] deferred: emergency stop is engaged`);
+    return { deferred: true };
+  }
   return executeTask(job.data.taskId, job.id);
 }, { connection, concurrency: 1 });
+
+// Stop supervisor pauses fetching (in-flight jobs always complete) and the
+// wedge sweeper recovers mid-flight corpses. docs/OPERATIONS.md
+createStopSupervisor({ store: connection, worker, log: (message) => console.log(message) }).start();
+setInterval(() => { sweepWedgedTasks().catch((error) => console.warn('[Sweeper] sweep failed:', error instanceof Error ? error.message : error)); }, 10 * 60_000).unref();
+void sweepWedgedTasks().catch(() => {});
 
 worker.on('completed', job => console.log(`[Execution ${job?.id}] Draft PR ready.`));
 worker.on('failed', (job, error) => {

@@ -10,6 +10,8 @@ import { GoogleGenAI } from '@google/genai';
 import { PrismaClient } from '@prisma/client';
 import { transitionTask, emitTaskEvent, tryEmitTaskEvent } from '@foundry/state-machine';
 import { loadAgentCatalog, CatalogIntegrityError, LoadedCatalog } from './catalog';
+import { createStopSupervisor, deferJobWhileStopped } from '@foundry/ops';
+import { estimateUsd, parseRatePerMillion, RATE_ENV } from '@foundry/cost';
 import { validatePlan, CATALOG_REPOSITORY } from './plan';
 
 const prisma = new PrismaClient();
@@ -51,6 +53,11 @@ async function generatePlannerResponse(prompt: string): Promise<GenerationResult
 
 const worker = new Worker('foundry-tasks', async (job) => {
   if (job.data.action !== 'plan') throw new UnrecoverableError(`Unsupported action: ${String(job.data.action)}`);
+  // Emergency stop (P14): re-park instead of planning when the flag is set.
+  if (await deferJobWhileStopped(connection, job)) {
+    console.log(`[Job ${job.id}] deferred: emergency stop is engaged`);
+    return { deferred: true };
+  }
   const task = await prisma.task.findUnique({ where: { id: job.data.taskId }, include: { project: true } });
   if (!task) throw new UnrecoverableError(`Task ${job.data.taskId} not found`);
   // Duplicate/redelivery tolerance: only PLANNING tasks hold unconsumed plan
@@ -98,6 +105,7 @@ const worker = new Worker('foundry-tasks', async (job) => {
       await emitTaskEvent(tx, { taskId: task.id, type: 'plan_approval_requested', actor: 'orchestrator', actorType: 'worker', correlationId: job.id, payload: { gate: 'plan' } });
       await tx.auditEvent.create({ data: { actor: 'orchestrator', action: 'task.plan_generated', target: task.id, result: 'success', metadata: { jobId: job.id, tokens, catalogCommit: loaded.commit, catalogPinned: loaded.pinned, skippedCatalogEntries: loaded.skippedEntries.length, selectedAgents: plan.selectedAgents.map(agent => agent.catalogId) } } });
     });
+    await persistCostEstimate(task.id).catch(() => {});
     return { success: true };
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 2000) : 'Unknown planning error';
@@ -121,6 +129,7 @@ const worker = new Worker('foundry-tasks', async (job) => {
       }
       await tx.auditEvent.create({ data: { actor: 'orchestrator', action: preserveSuccessfulPlan ? 'task.duplicate_plan_failed_ignored' : 'task.plan_generated', target: task.id, result: 'failed', metadata: { catalogCommit: catalog?.commit ?? null, catalogPinned: catalog?.pinned ?? false, permanentCatalogError: permanent, attempt: job.attemptsMade + 1, willRetry: !finalAttempt && !preserveSuccessfulPlan } } });
     });
+    if (finalAttempt) await persistCostEstimate(task.id).catch(() => {});
     throw permanent ? new UnrecoverableError(message) : error;
   }
 }, { connection, concurrency: 2 });
@@ -140,4 +149,13 @@ worker.on('failed', (job, err) => {
     }).catch(() => {});
   }
 });
+/** P14 cost accounting: persist the priced-token estimate at terminal
+ *  points (unset rate persists $0 by design — docs/OPERATIONS.md). */
+async function persistCostEstimate(taskId: string): Promise<void> {
+  const rate = parseRatePerMillion(process.env[RATE_ENV]);
+  const sum = await prisma.agentRun.aggregate({ _sum: { tokenUsage: true }, where: { taskId, provider: 'google' } });
+  await prisma.task.update({ where: { id: taskId }, data: { estimatedCost: estimateUsd(sum._sum.tokenUsage ?? 0, rate) } });
+}
+
+createStopSupervisor({ store: connection, worker, log: (message) => console.log(message) }).start();
 console.log('Orchestrator listening with mandatory 500-AI-Agents catalog selection.');

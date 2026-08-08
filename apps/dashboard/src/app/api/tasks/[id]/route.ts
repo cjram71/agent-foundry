@@ -2,15 +2,34 @@ import { NextResponse } from 'next/server';
 import { spawn } from 'node:child_process';
 import prisma from '@/lib/prisma';
 import { getSession, isSameOrigin } from '@/lib/auth';
-import { enqueueExecution, enqueuePlan } from '@/lib/queue';
+import { enqueueExecution, enqueuePlan, getTaskQueue, getExecutionQueue } from '@/lib/queue';
 import { transitionTask, emitTaskEvent, isValidTransition } from '@foundry/state-machine';
 import { classifyTaskRisk, evaluateTaskAgainstPolicy, asDeclaredRisk } from '@foundry/policy';
 import { parseManagerPlan, buildTaskDrafts } from '@foundry/manager';
 import { loadActivePolicy } from '@/lib/policy';
 import { parseChangeRequestNote } from '@/lib/change-request';
+import { checkSpendGuard } from '@/lib/cost';
+import { sandboxSlugForTask, parseContainerNames } from '@/lib/cancel-sandbox';
+import { planJobId, executeJobId } from '@/lib/queue-policy';
 type PullRequestStatus = { state: string; mergedAt: string | null; isDraft: boolean; statusCheckRollup: Array<{ status?: string; conclusion?: string; state?: string }> };
 function runGitHub(args: string[]): Promise<string> { return new Promise((resolve,reject)=>{const child=spawn('gh',args,{shell:false,windowsHide:true,env:{...process.env,GH_PROMPT_DISABLED:'1'},stdio:['ignore','pipe','pipe'],timeout:30000});let stdout='',stderr='';child.stdout.on('data',c=>stdout+=c.toString());child.stderr.on('data',c=>stderr+=c.toString());child.on('error',reject);child.on('close',code=>code===0?resolve(stdout):reject(new Error(stderr.slice(0,500))));}); }
 async function readPullRequestStatus(url:string,owner:string,repo:string){const match=/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)$/.exec(url);if(!match||match[1].toLowerCase()!==owner.toLowerCase()||match[2].toLowerCase()!==repo.toLowerCase())throw new Error('PR repository mismatch');const output=await runGitHub(['pr','view',match[3],'--repo',`${owner}/${repo}`,'--json','state,mergedAt,isDraft,statusCheckRollup']);const pr=JSON.parse(output) as PullRequestStatus;const checks=pr.statusCheckRollup||[];const failed=checks.filter(c=>['FAILURE','ERROR','CANCELLED','TIMED_OUT','ACTION_REQUIRED'].includes(c.conclusion||c.state||'')).length;const pending=checks.filter(c=>['QUEUED','IN_PROGRESS','PENDING','EXPECTED'].includes(c.status||c.state||'')).length;return{state:pr.state,mergedAt:pr.mergedAt,isDraft:pr.isDraft,checks:{total:checks.length,failed,pending,passed:Math.max(0,checks.length-failed-pending)}};}
+
+/** P14: best-effort kill of the task's live sandbox containers (the state
+ *  machine is already cancelled, so the runner's follow-up transitions
+ *  reject; killing the containers stops the CPU spend now, not later).
+ *  Dashboard and runner share the host in the beta deployment model. */
+function runDocker(args: string[]): Promise<string> { return new Promise((resolve,reject)=>{const child=spawn('docker',args,{shell:false,windowsHide:true,stdio:['ignore','pipe','pipe'],timeout:10000});let stdout='',stderr='';child.stdout.on('data',c=>stdout+=c.toString());child.stderr.on('data',c=>stderr+=c.toString());child.on('error',reject);child.on('close',code=>code===0?resolve(stdout):reject(new Error(stderr.slice(0,300))));}); }
+async function killTaskSandboxes(taskId: string): Promise<number> {
+  const slug = sandboxSlugForTask(taskId);
+  try {
+    const listed = await runDocker(['ps', '--format', '{{.Names}}', '--filter', `name=foundry-sandbox-${slug}-`]);
+    const names = parseContainerNames(listed, slug);
+    let killed = 0;
+    for (const name of names) { await runDocker(['rm', '-f', name]).catch(() => ''); killed += 1; }
+    return killed;
+  } catch { return 0; }
+}
 
 async function authorize(request: Request) {
   const session = await getSession();
@@ -38,8 +57,35 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     } catch { return NextResponse.json({ error: 'GitHub status is temporarily unavailable. The task was not changed.' }, { status: 503 }); }
   }
 
+  if (body.action === 'cancel_task') {
+    // P14 cancellation driver: the machine decides which states are
+    // cancellable (terminal states and APPROVED have no CANCELLED edge).
+    if (!isValidTransition(current.state, 'CANCELLED')) return NextResponse.json({ error: `Task is already ${current.status.replaceAll('_', ' ')} and cannot be cancelled.` }, { status: 409 });
+    const reason = typeof body.comments === 'string' && body.comments.trim() ? body.comments.trim().slice(0, 2000) : 'Cancelled by administrator';
+    await prisma.$transaction(async tx => {
+      await transitionTask(tx, { taskId: id, to: 'CANCELLED', actor: auth.session!.userId, actorType: 'human', reason: reason.slice(0, 300), legacyStatus: 'cancelled', metadata: { previousState: current.state } });
+      await tx.approval.updateMany({ where: { taskId: id, decision: 'pending' }, data: { decision: 'cancelled', approvedBy: auth.session!.userId, approvedAt: new Date() } });
+      await emitTaskEvent(tx, { taskId: id, type: 'task_cancelled', actor: auth.session!.userId, actorType: 'human', payload: { previousState: current.state } });
+      await tx.auditEvent.create({ data: { actor: auth.session!.userId, action: 'task.cancelled', target: id, result: 'success', metadata: { previousState: current.state } } });
+    });
+    // Best-effort aftermath, deliberately OUTSIDE the atomic state change:
+    // drop any still-queued BullMQ jobs (queued delivery) and kill live
+    // sandbox containers (mid-flight execution). Race outcomes are safe:
+    // a worker that starts anyway hits the CANCELLED state and self-skips.
+    let removedJobs = 0;
+    try { removedJobs += await getTaskQueue().remove(planJobId(id)); } catch { /* queue absent */ }
+    try { removedJobs += await getExecutionQueue().remove(executeJobId(id)); } catch { /* queue absent */ }
+    const killedContainers = await killTaskSandboxes(id);
+    return NextResponse.json({ message: `Task cancelled.${removedJobs ? ` Removed ${removedJobs} queued job(s).` : ''}${killedContainers ? ` Stopped ${killedContainers} sandbox container(s).` : ''}` });
+  }
+
   if (body.action === 'request_plan') {
     if (current.status !== 'draft' && current.status !== 'failed') return NextResponse.json({ error: `Task is already ${current.status.replaceAll('_', ' ')}.` }, { status: 409 });
+    const planSpend = await checkSpendGuard(current.projectId);
+    if (!planSpend.allowed) {
+      await prisma.auditEvent.create({ data: { actor: auth.session!.userId, action: 'cost.spend_blocked', target: id, result: 'rejected', metadata: { stage: 'request_plan', spendUsd: planSpend.spendUsd, limitUsd: planSpend.limitUsd } } });
+      return NextResponse.json({ error: planSpend.reason }, { status: 409 });
+    }
     await transitionTask(prisma, { taskId: id, to: 'PLANNING', actor: auth.session!.userId, actorType: 'human', reason: 'plan requested', legacyStatus: 'planning', extraTaskData: { startedAt: current.startedAt || new Date() } });
     try {
       const { job, deduplicated } = await enqueuePlan(id);
@@ -65,6 +111,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       if (!decision.allowed) {
         await prisma.auditEvent.create({ data: { actor: auth.session!.userId, action: 'policy.task_blocked', target: id, result: 'rejected', metadata: { stage: 'plan_approval', level: risk.level, rules: decision.matchedRules, policyCeiling: policy.maxTaskRisk, evaluationOnly } } });
         return NextResponse.json({ error: 'Approval was blocked by the project policy.', reasons: decision.reasons }, { status: 409 });
+      }
+    }
+    if (approved) {
+      const spend = await checkSpendGuard(current.projectId);
+      if (!spend.allowed) {
+        await prisma.auditEvent.create({ data: { actor: auth.session!.userId, action: 'cost.spend_blocked', target: id, result: 'rejected', metadata: { stage: 'approve_plan', evaluationOnly, spendUsd: spend.spendUsd, limitUsd: spend.limitUsd } } });
+        return NextResponse.json({ error: spend.reason }, { status: 409 });
       }
     }
     if (approved && !evaluationOnly && process.env.GITHUB_CLI_ENABLED !== 'true' && (!process.env.GITHUB_INSTALLATION_ID || !process.env.GITHUB_PRIVATE_KEY_PATH)) {
@@ -153,6 +206,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   if (body.action === 'resubmit_changes') {
     if (current.state !== 'CHANGES_REQUESTED') return NextResponse.json({ error: `Task is already ${current.status.replaceAll('_', ' ')}.` }, { status: 409 });
+    const resubmitSpend = await checkSpendGuard(current.projectId);
+    if (!resubmitSpend.allowed) {
+      await prisma.auditEvent.create({ data: { actor: auth.session!.userId, action: 'cost.spend_blocked', target: id, result: 'rejected', metadata: { stage: 'resubmit_changes', spendUsd: resubmitSpend.spendUsd, limitUsd: resubmitSpend.limitUsd } } });
+      return NextResponse.json({ error: resubmitSpend.reason }, { status: 409 });
+    }
     if (process.env.GITHUB_CLI_ENABLED !== 'true' && (!process.env.GITHUB_INSTALLATION_ID || !process.env.GITHUB_PRIVATE_KEY_PATH)) {
       return NextResponse.json({ error: 'Execution is locked until the GitHub App installation and private key are configured.' }, { status: 503 });
     }

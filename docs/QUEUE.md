@@ -73,13 +73,15 @@ the same marker.
 
 ## Known gaps (explicitly later)
 
-- **Wedged `RUNNING` tasks**: a worker *crash* mid-execution (not a caught
-  failure) leaves the task `RUNNING` with a `running` attempt; BullMQ stall
-  detection re-queues the job, whose pickup then cleanly skips. A
-  stale-attempt sweeper + human re-queue control is P14 health scope.
-- **Cost-level idempotency**: token usage is recorded per attempt; a
-  retry sequence spends per attempt by design and is observable via
-  `AgentRun` rows. Budget enforcement is P14.
+- ~~**Wedged `RUNNING` tasks**~~ — **closed in P14** (docs/OPERATIONS.md):
+  the runner sweeps active execution states silent past
+  `WEDGE_TIMEOUT_MINUTES` (default 45) into `INFRASTRUCTURE_FAILED`.
+  Remaining sub-gap: QUEUED tasks whose job vanished externally (Redis
+  flush) sit until an operator re-triggers an enqueue path.
+- ~~**Cost-level idempotency**~~ — **closed in P14**: token accounting is
+  per-attempt by design (observable via `AgentRun`), and the month-to-date
+  project spending brake enforces at every spend trigger
+  (docs/OPERATIONS.md).
 - Stage events (`planning_started` etc.) are at-least-once; consumers
   dedupe on `(type, correlationId)` per docs/EVENTS.md.
 

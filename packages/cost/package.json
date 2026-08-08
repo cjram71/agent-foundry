@@ -1,0 +1,13 @@
+{
+  "name": "@foundry/cost",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Deterministic cost accounting primitives for Agent Foundry (P14): rate parsing, USD estimation, monthly window, spend-guard brake.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node --test dist/index.test.js"
+  },
+  "devDependencies": { "typescript": "^5.0.0", "@types/node": "^20.0.0" }
+}

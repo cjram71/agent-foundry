@@ -80,3 +80,11 @@
       # ---- P9 additions: orchestrator catalog + plan validation ---------
       - name: Orchestrator catalog & plan validation unit tests
         run: npm test --workspace=apps/orchestrator
+      # ---- P13 additions: github client idempotency ----------------------
+      - name: GitHub client unit tests (idempotent PR creation)
+        run: npm test --workspace=packages/github
+      # ---- P14 additions: cost + ops primitives --------------------------
+      - name: Cost primitives unit tests (spend brake)
+        run: npm test --workspace=packages/cost
+      - name: Ops primitives unit tests (stop, sweeper)
+        run: npm test --workspace=packages/ops

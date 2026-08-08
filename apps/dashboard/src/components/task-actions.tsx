@@ -4,6 +4,9 @@ import { useRouter } from 'next/navigation';
 
 const activeStatuses = new Set(['planning', 'queued', 'coding', 'testing', 'reviewing']);
 const repositoryStatuses = new Set(['awaiting_human_review', 'pull_request_open', 'preview_ready', 'approved_for_merge']);
+// Mirror of the transition table's CANCELLED edges (the server enforces the
+// authoritative check; this only decides whether the button renders).
+const cancellableStates = new Set(['DRAFT', 'QUEUED', 'PLANNING', 'RUNNING', 'VALIDATING', 'REPAIRING', 'REVIEWING', 'PR_CREATED', 'PREVIEW_PENDING', 'PREVIEW_READY', 'AWAITING_APPROVAL', 'CHANGES_REQUESTED', 'HUMAN_INPUT_REQUIRED', 'INFRASTRUCTURE_FAILED', 'CODE_FAILED', 'FAILED']);
 
 export default function TaskActions({ taskId, status, state }: { taskId: string; status: string; state?: string }) {
   const router = useRouter();
@@ -68,6 +71,7 @@ export default function TaskActions({ taskId, status, state }: { taskId: string;
       <button disabled={busy} className="button primary" onClick={() => act('resubmit_changes')}>Resubmit for re-execution</button>
       <button disabled={busy} className="button danger" onClick={() => act('reject_final')}>Reject result</button>
     </>}
+    {state && cancellableStates.has(state) && <button disabled={busy} className="button secondary" onClick={() => { if (window.confirm('Cancel this task? Queued jobs are removed and live sandboxes are stopped.')) void act('cancel_task'); }}>Cancel task</button>}
     {message && <span className="muted">{message}</span>}
   </div>
   {changeFormOpen && atMergeGate && <div className="change-request-form">
