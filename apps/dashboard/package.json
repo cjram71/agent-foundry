@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --experimental-strip-types --experimental-loader ./src/lib/__tests__/ts-resolve-loader.mjs --test --test-force-exit \"src/lib/__tests__/*.test.ts\" \"src/app/api/__tests__/*.test.ts\""
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

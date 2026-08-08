@@ -1,28 +1,34 @@
 import { cookies } from 'next/headers';
-import { jwtVerify, type JWTPayload } from 'jose';
+import { SESSION_COOKIE_NAME, verifySessionToken, type SessionRole } from '@/lib/auth-session';
+import { findActiveSession } from '@/lib/session-store';
 
-export type Session = JWTPayload & { userId: string; email: string; role: 'ADMIN' | 'OPERATOR' };
+export { SESSION_COOKIE_NAME, SESSION_TTL_MINUTES, SESSION_TTL_SECONDS, sessionCookieOptions, sessionExpiryDate, issueSessionToken, verifySessionToken } from '@/lib/auth-session';
+export { getJwtSecret } from '@/lib/secrets';
+export { isSameOrigin } from '@/lib/origin';
 
-export function getJwtSecret(): Uint8Array {
-  const value = process.env.JWT_SECRET;
-  if (!value || value.length < 32) throw new Error('JWT_SECRET must be configured with at least 32 characters');
-  return new TextEncoder().encode(value);
-}
+export type Session = { userId: string; email: string; role: SessionRole; sid: string };
 
+/**
+ * Authoritative session resolution for route handlers and server components.
+ * Runs in the node runtime only (uses next/headers + Prisma).
+ *
+ * Two-layer model:
+ *  1. The JWT proves integrity and lifetime (signed, 8h exp).
+ *  2. The Session row proves the session has not been revoked (logout,
+ *     admin action) and has not expired server-side.
+ * A request is authenticated only if both layers agree, and the row must
+ * belong to the same user as the token.
+ */
 export async function getSession(): Promise<Session | null> {
-  const token = (await cookies()).get('foundry_session')?.value;
+  const token = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
   if (!token) return null;
-  try {
-    const { payload } = await jwtVerify(token, getJwtSecret(), { algorithms: ['HS256'] });
-    if (typeof payload.userId !== 'string' || typeof payload.email !== 'string' || (payload.role !== 'ADMIN' && payload.role !== 'OPERATOR')) return null;
-    return payload as Session;
-  } catch { return null; }
+  const claims = await verifySessionToken(token);
+  if (!claims) return null;
+  const record = await findActiveSession(claims.sid);
+  if (!record || record.userId !== claims.userId) return null;
+  return { userId: claims.userId, email: claims.email, role: claims.role, sid: claims.sid };
 }
 
-export function isSameOrigin(request: Request): boolean {
-  const origin = request.headers.get('origin');
-  if (!origin) return true;
-  const expected = process.env.APP_URL;
-  if (expected) return origin === new URL(expected).origin;
-  return origin === new URL(request.url).origin;
+export function isAdmin(session: Session | null): session is Session {
+  return session?.role === 'ADMIN';
 }

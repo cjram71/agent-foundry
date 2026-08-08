@@ -35,6 +35,7 @@ BEGIN
   FOR c IN
     SELECT * FROM (VALUES
       ('User',       ARRAY['id','email','passwordHash','role','createdAt','lastLoginAt']),
+      ('Session',    ARRAY['id','userId','createdAt','expiresAt','lastSeenAt','ip','userAgent','revokedAt']),
       ('Project',    ARRAY['id','name','githubOwner','githubRepo','defaultBranch','projectType','productionUrl','vercelProjectRef','vercelTeamRef','authorisedStatus','spendingLimit','createdAt']),
       ('Task',       ARRAY['id','projectId','title','completeInstruction','status','riskLevel','assignedAgent','branchName','pullRequestUrl','previewUrl','tokenUsage','estimatedCost','createdAt','startedAt','completedAt']),
       ('AgentRun',   ARRAY['id','taskId','provider','model','role','promptHash','status','tokenUsage','outputSummary','errorInfo','createdAt']),
@@ -94,16 +95,21 @@ BEGIN
     AND data_type='jsonb' AND is_nullable='YES';
   IF NOT FOUND THEN RAISE EXCEPTION 'AuditEvent.metadata must be nullable jsonb'; END IF;
 
-  -- 5. Unique index on User.email
+  -- 5. Indexes: unique User.email, Session lookup indexes
   PERFORM 1 FROM pg_indexes WHERE schemaname='public' AND tablename='User' AND indexname='User_email_key'
     AND indexdef ILIKE '%UNIQUE%' AND indexdef ILIKE '%(email)%';
   IF NOT FOUND THEN RAISE EXCEPTION 'Unique index User_email_key missing'; END IF;
+
+  PERFORM 1 FROM pg_indexes WHERE schemaname='public' AND tablename='Session' AND indexname='Session_userId_idx';
+  IF NOT FOUND THEN RAISE EXCEPTION 'Index Session_userId_idx missing'; END IF;
+  PERFORM 1 FROM pg_indexes WHERE schemaname='public' AND tablename='Session' AND indexname='Session_expiresAt_idx';
+  IF NOT FOUND THEN RAISE EXCEPTION 'Index Session_expiresAt_idx missing'; END IF;
 
   -- 6. Foreign keys with CASCADE delete semantics (schema.prisma onDelete: Cascade)
   FOR c IN
     SELECT conname, conrelid::regclass::text AS child, confdeltype, confupdtype
       FROM pg_constraint
-      WHERE contype='f' AND conname IN ('Task_projectId_fkey','AgentRun_taskId_fkey','Approval_taskId_fkey')
+      WHERE contype='f' AND conname IN ('Task_projectId_fkey','AgentRun_taskId_fkey','Approval_taskId_fkey','Session_userId_fkey')
   LOOP
     IF c.confdeltype <> 'c' OR c.confupdtype <> 'c' THEN
       RAISE EXCEPTION 'FK % on % must be ON DELETE CASCADE ON UPDATE CASCADE (got del=% up=%)',
@@ -111,9 +117,17 @@ BEGIN
     END IF;
   END LOOP;
   IF (SELECT COUNT(*) FROM pg_constraint WHERE contype='f' AND conname IN
-        ('Task_projectId_fkey','AgentRun_taskId_fkey','Approval_taskId_fkey')) <> 3 THEN
-    RAISE EXCEPTION 'Expected 3 CASCADE foreign keys to exist';
+        ('Task_projectId_fkey','AgentRun_taskId_fkey','Approval_taskId_fkey','Session_userId_fkey')) <> 4 THEN
+    RAISE EXCEPTION 'Expected 4 CASCADE foreign keys to exist';
   END IF;
+
+  -- 7. Session columns the auth flow depends on
+  PERFORM 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Session' AND column_name='expiresAt' AND is_nullable='NO';
+  IF NOT FOUND THEN RAISE EXCEPTION 'Session.expiresAt must be NOT NULL'; END IF;
+  PERFORM 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Session' AND column_name='revokedAt' AND is_nullable='YES';
+  IF NOT FOUND THEN RAISE EXCEPTION 'Session.revokedAt must be nullable'; END IF;
+  PERFORM 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Session' AND column_name='lastSeenAt' AND column_default IS NOT NULL;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Session.lastSeenAt must have a DEFAULT'; END IF;
 
   RAISE NOTICE 'SCHEMA PARITY OK: database structure matches the Prisma client contract';
 END $$;

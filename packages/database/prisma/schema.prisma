@@ -38,6 +38,22 @@ model User {
   role          Role      @default(OPERATOR)
   createdAt     DateTime  @default(now())
   lastLoginAt   DateTime?
+  sessions      Session[]
+}
+
+model Session {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime
+  lastSeenAt  DateTime  @default(now())
+  ip          String?
+  userAgent   String?
+  revokedAt   DateTime?
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model Project {

@@ -16,6 +16,12 @@ export default function Nav() {
   return <aside className="sidebar">
     <div className="brand"><span className="brand-mark">AF</span><div><strong>Agent Foundry</strong><small>Control Plane</small></div></div>
     <nav>{links.map(([href,label]) => <Link key={href} href={href} className={pathname === href || (href !== '/' && pathname.startsWith(href)) ? 'active' : ''}>{label}</Link>)}</nav>
-    <div className="sidebar-status"><span className="status-dot"/> Gizmo online<small>Private Tailscale network</small></div>
+    <div className="sidebar-status">
+      <span className="status-dot"/> Gizmo online<small>Private Tailscale network</small>
+      <button
+        className="button secondary logout-button"
+        onClick={async () => { await fetch('/api/auth/logout', { method: 'POST' }); window.location.href = '/login'; }}
+      >Sign out</button>
+    </div>
   </aside>;
 }

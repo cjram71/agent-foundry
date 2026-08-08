@@ -1,32 +1,33 @@
 import { NextResponse } from 'next/server';
-import bcrypt from 'bcrypt';
-import { SignJWT } from 'jose';
-import prisma from '@/lib/prisma';
-import { getJwtSecret, isSameOrigin } from '@/lib/auth';
-import { checkRateLimit, clearRateLimit } from '@/lib/rate-limit';
+import { isSameOrigin } from '@/lib/origin';
+import { authenticateCredentials, INVALID_CREDENTIALS } from '@/lib/login-flow';
+import { SESSION_COOKIE_NAME, sessionCookieOptions } from '@/lib/auth-session';
 
+/**
+ * Thin HTTP wrapper around lib/login-flow.ts. All credential, rate-limit,
+ * session, and audit behavior lives in the flow module so it is directly
+ * testable against a real database; this route only maps results to HTTP
+ * and attaches the session cookie.
+ */
 export async function POST(request: Request) {
   try {
     if (!isSameOrigin(request)) return NextResponse.json({ error: 'Invalid origin' }, { status: 403 });
-    const body = await request.json();
-    const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
-    const password = typeof body.password === 'string' ? body.password : '';
-    if (!email || email.length > 254 || !password || password.length > 256) return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
+    const body = await request.json().catch(() => ({}));
+    const result = await authenticateCredentials({
+      email: body.email,
+      password: body.password,
+      ip: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
+      userAgent: request.headers.get('user-agent')?.slice(0, 255) ?? null,
+    });
 
-    const forwarded = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
-    const key = `${forwarded || 'unknown'}:${email}`;
-    const rate = checkRateLimit(key);
-    if (!rate.allowed) return NextResponse.json({ error: 'Too many login attempts' }, { status: 429, headers: { 'Retry-After': String(rate.retryAfter) } });
-
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user || !(await bcrypt.compare(password, user.passwordHash))) return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
-    clearRateLimit(key);
-
-    const token = await new SignJWT({ userId: user.id, email: user.email, role: user.role })
-      .setProtectedHeader({ alg: 'HS256' }).setIssuedAt().setExpirationTime('8h').sign(getJwtSecret());
+    if (result.kind === 'rate_limited') {
+      return NextResponse.json({ error: 'Too many login attempts' }, { status: 429, headers: { 'Retry-After': String(result.retryAfter) } });
+    }
+    if (result.kind === 'invalid') {
+      return NextResponse.json({ error: INVALID_CREDENTIALS }, { status: 401 });
+    }
     const response = NextResponse.json({ success: true });
-    response.cookies.set('foundry_session', token, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/', maxAge: 60 * 60 * 8 });
-    await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+    response.cookies.set(SESSION_COOKIE_NAME, result.token, sessionCookieOptions(process.env.NODE_ENV === 'production'));
     return response;
   } catch (error) {
     console.error('Login error:', error instanceof Error ? error.message : 'unknown');
