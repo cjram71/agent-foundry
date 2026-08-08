@@ -17,7 +17,7 @@ DB credentials, GitHub tokens, and other tasks' workspaces.
 
 | Control | Value |
 | --- | --- |
-| Network | `--network none` — no egress at all; supply-chain payloads cannot phone home |
+| Network | `--network none` — no egress at all; supply-chain payloads cannot phone home. Sole exception: the validation engine's `dependencies` install stage (P10), which explicitly opts into network while running `--ignore-scripts` npm — no fetched code can execute there (docs/VALIDATION.md) |
 | Root filesystem | `--read-only` |
 | Capabilities | `--cap-drop ALL` + `--security-opt no-new-privileges` |
 | PIDs / memory / CPU | `--pids-limit 128`, `--memory $SANDBOX_MEMORY` (default `2g`), `--cpus $SANDBOX_CPUS` (default `1.5`) |
@@ -81,12 +81,11 @@ correctly installed VPS never exercises the pull path.
 
 ## Residual risks (accepted, documented)
 
-1. **Host-side preflight install.** The runner executes
-   `npm install --ignore-scripts --no-package-lock --no-audit --no-fund` on the
-   host copy before validation (validation needs `node_modules`). Lifecycle
-   scripts are disabled, so dependency code does not *execute* on the host — it
-   can only run later, inside the network-less container. Moving preflight into
-   the container is validation-engine work, scheduled for P10.
+1. ~~**Host-side preflight install.**~~ **Closed in P10** (docs/VALIDATION.md):
+   the runner no longer executes `npm install` on the host. Dependency
+   resolution now happens inside the container as the validation engine's
+   networked, script-disabled `dependencies` stage — the only stage with a
+   network is one where no fetched code can execute.
 2. **Docker = root-equivalent.** Anyone who can reach the Docker socket owns the
    host; the daemon is trusted. Standard Docker deployment caveat, mitigated by
    the runner being a dedicated service account.
@@ -111,6 +110,10 @@ the dashboard's `TEST_DATABASE_URL` tests:
   A *nonexistent* path would fail earlier in `realpath()` with `ENOENT` and the
   assertion would be meaningless — that was the old test's portability bug
   (`/home/cory/agent-foundry` exists only on the VPS).
+- **Install-stage test (P10)** is Docker-gated like test 1: it runs the real
+  networked `--ignore-scripts` install against a fixture carrying a malicious
+  `postinstall` and asserts persistence semantics plus non-execution of the
+  lifecycle script.
 
 ## Verification
 

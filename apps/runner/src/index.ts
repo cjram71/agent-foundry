@@ -1,7 +1,6 @@
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs/promises';
-import { spawn } from 'child_process';
 import { createHash } from 'crypto';
 import { Worker, UnrecoverableError } from 'bullmq';
 import IORedis from 'ioredis';
@@ -10,7 +9,8 @@ import { PrismaClient } from '@prisma/client';
 import { GitHubClient } from '@foundry/github';
 import { transitionTask, emitTaskEvent, tryEmitTaskEvent } from '@foundry/state-machine';
 import { ReviewerAgent } from './reviewer';
-import { SandboxController, ValidationCommand } from './sandbox';
+import { SandboxController } from './sandbox';
+import { runValidationPipeline, deriveValidationCommands, ValidationStageError } from './validation';
 
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 dotenv.config({ path: path.resolve(__dirname, '../../../packages/database/.env') });
@@ -27,8 +27,6 @@ const BLOCKED_NAMES = new Set(['.env','.npmrc','.netrc','id_rsa','id_ed25519']);
 
 type Change = { path: string; content: string; reason: string };
 type CoderResult = { summary: string; changes: Change[]; validationNotes: string[] };
-
-type ProcessResult = { code: number; output: string };
 
 function safeRelativePath(value: string): string {
   const normalized = value.replace(/\\/g, '/');
@@ -96,23 +94,6 @@ async function applyChanges(root: string, changes: Change[]) {
     try { if ((await fs.lstat(target)).isSymbolicLink()) throw new Error(`Refusing to overwrite symlink ${relative}`); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
     await fs.writeFile(target, change.content, { encoding: 'utf8', mode: 0o600 });
   }
-}
-
-function runProcess(executable: string, args: string[], cwd: string, timeoutMs = 180_000): Promise<ProcessResult> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(executable, args, { cwd, shell: false, windowsHide: true, timeout: timeoutMs, env: { PATH: process.env.PATH || '/usr/bin:/bin', HOME: process.env.HOME || '/tmp', NODE_ENV: 'development', npm_config_ignore_scripts: 'true' }, stdio: ['ignore','pipe','pipe'] });
-    let output = '';
-    const append = (chunk: Buffer) => { if (Buffer.byteLength(output) < 500_000) output += chunk.toString('utf8'); };
-    child.stdout.on('data', append); child.stderr.on('data', append); child.on('error', reject);
-    child.on('close', code => code === 0 ? resolve({ code: 0, output }) : reject(new Error(`${executable} failed (${code}): ${output.slice(-4000)}`)));
-  });
-}
-
-async function validationCommands(repoPath: string): Promise<ValidationCommand[]> {
-  const pkg = JSON.parse(await fs.readFile(path.join(repoPath, 'package.json'), 'utf8')) as { scripts?: Record<string,string> };
-  const names = ['lint','typecheck','test','build'].filter(name => pkg.scripts?.[name]);
-  if (!names.length) throw new Error('Repository has no allowlisted validation scripts');
-  return names.map(name => ({ executable: 'npm' as const, args: ['run', name] }));
 }
 
 async function generateCoderResponse(prompt: string) {
@@ -187,19 +168,20 @@ async function executeTask(taskId: string, jobId: string | undefined) {
 
     await transition('VALIDATING', { reason: 'coder returned changes; running validation', legacyStatus: 'testing', extraTaskData: { tokenUsage: { increment: response.usageMetadata?.totalTokenCount || 0 } } });
     await tryEmitTaskEvent(prisma, { taskId, type: 'validation_started', actor: 'runner', actorType: 'worker', attemptId: attempt.id, correlationId: jobId });
-    await runProcess('npm', ['install','--ignore-scripts','--no-package-lock','--no-audit','--no-fund'], repoPath);
-    const commands = await validationCommands(repoPath);
-    const sandbox = new SandboxController();
-    for (const command of commands.slice(0,-1)) {
-      const validation = await sandbox.executeInSandbox({ taskId, repoPath, command, timeoutMs: 180_000 });
-      if (!validation.success) {
-        await tryEmitTaskEvent(prisma, { taskId, type: 'validation_failed', actor: 'runner', actorType: 'worker', attemptId: attempt.id, correlationId: jobId, payload: { command: `${command.executable} ${command.args.join(' ')}` } });
-        throw new Error(`Validation failed: ${command.args.join(' ')}\n${validation.output.slice(-4000)}`);
-      }
+    const commands = await deriveValidationCommands(repoPath);
+    // P10 staged validation (docs/VALIDATION.md): dependencies install inside
+    // a script-disabled container (network up, nothing executing it), then the
+    // pre-review commands run offline, stopping at the first failure. The
+    // final derived command stays reserved for the reviewer's isolated run.
+    const report = await runValidationPipeline({ sandbox: new SandboxController(), taskId, repoPath, commands: commands.slice(0, -1) });
+    if (!report.ok) {
+      const failedStage = report.failedStage!;
+      await tryEmitTaskEvent(prisma, { taskId, type: 'validation_failed', actor: 'runner', actorType: 'worker', attemptId: attempt.id, correlationId: jobId, payload: { stage: failedStage.stage, command: failedStage.command, exitCode: failedStage.exitCode, durationMs: failedStage.durationMs } });
+      throw new ValidationStageError(report, failedStage);
     }
     const diff = await github.getDiff(repoPath);
     if (!diff.trim()) throw new Error('Coding agent produced no diff');
-    await tryEmitTaskEvent(prisma, { taskId, type: 'validation_passed', actor: 'runner', actorType: 'worker', attemptId: attempt.id, correlationId: jobId, payload: { commands: commands.map(command => `${command.executable} ${command.args.join(' ')}`) } });
+    await tryEmitTaskEvent(prisma, { taskId, type: 'validation_passed', actor: 'runner', actorType: 'worker', attemptId: attempt.id, correlationId: jobId, payload: { commands: commands.map(command => `${command.executable} ${command.args.join(' ')}`), stages: report.stages.map(stage => ({ stage: stage.stage, command: stage.command, exitCode: stage.exitCode, durationMs: stage.durationMs })) } });
     await transition('REVIEWING', { reason: 'validation produced a diff; safety review starting', legacyStatus: 'reviewing' });
     await tryEmitTaskEvent(prisma, { taskId, type: 'review_started', actor: 'runner', actorType: 'worker', attemptId: attempt.id, correlationId: jobId });
     const reviewer = new ReviewerAgent();
@@ -246,8 +228,12 @@ async function executeTask(taskId: string, jobId: string | undefined) {
         // still recorded on the attempt and agent run below.
       }
       await tx.taskAttempt.update({ where: { id: attempt.id }, data: { status: 'failed', endedAt: new Date(), outcomeSummary: message.slice(0, 1000) } });
-      await emitTaskEvent(tx, { taskId, type: 'task_failed', actor: 'runner', actorType: 'worker', attemptId: attempt.id, correlationId: jobId, payload: { stage: repoPath ? 'workspace' : 'setup', error: message.slice(0, 1000) } });
-      await tx.auditEvent.create({ data: { actor: 'runner', action: 'task.execution_failed', target: taskId, result: 'failed', metadata: { jobId, stage: repoPath ? 'workspace' : 'setup' } } });
+      // Precise stage attribution (P10): validation failures name the failing
+      // pipeline stage ('dependencies', 'command:N'); anything else falls back
+      // to the workspace/setup heuristic.
+      const failureStage = error instanceof ValidationStageError ? `validation:${error.failingStage.stage}` : repoPath ? 'workspace' : 'setup';
+      await emitTaskEvent(tx, { taskId, type: 'task_failed', actor: 'runner', actorType: 'worker', attemptId: attempt.id, correlationId: jobId, payload: { stage: failureStage, error: message.slice(0, 1000) } });
+      await tx.auditEvent.create({ data: { actor: 'runner', action: 'task.execution_failed', target: taskId, result: 'failed', metadata: { jobId, stage: failureStage } } });
     });
     throw error;
   }

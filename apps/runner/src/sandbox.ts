@@ -15,6 +15,21 @@ export interface SandboxOptions {
   repoPath: string;
   command: ValidationCommand;
   timeoutMs?: number;
+  /** Grant outbound network for THIS run only. Default is no network at all.
+   *  Sole legitimate use: the dependency-install prep stage of the validation
+   *  engine (P10), which runs `--ignore-scripts` npm so no repository or
+   *  package code can execute while the network is up. Everything that does
+   *  execute repository code must run with the default network isolation. */
+  network?: boolean;
+  /** Mount repoPath directly instead of an isolated per-run copy, so changes
+   *  the container makes persist into the repository workspace. Sole use: the
+   *  install prep stage must leave node_modules behind for later stages.
+   *  Validation stages never use it — their writes stay disposable. */
+  persistToRepo?: boolean;
+  /** Override the /tmp tmpfs size (validated: digits + m/g). The install
+   *  stage needs room for the npm cache; validation stages keep the small
+   *  default. */
+  tmpfsSize?: string;
 }
 
 interface ProcessResult { output: string; exitCode: number; timedOut: boolean; }
@@ -34,18 +49,25 @@ export class SandboxController {
     const containerUid = typeof process.getuid === 'function' ? process.getuid() : 1000;
     const containerGid = typeof process.getgid === 'function' ? process.getgid() : 1000;
 
+    const tmpfsSize = /^[0-9]{1,4}[mg]$/i.test(options.tmpfsSize || '') ? options.tmpfsSize as string : '64m';
+
     try {
       const repoPath = await this.validateRepoPath(options.repoPath);
       await this.ensureImage(sandboxImage);
-      await fs.mkdir(workspaceDir, { recursive: false, mode: 0o700 });
-      await fs.cp(repoPath, workspaceDir, { recursive: true, verbatimSymlinks: true, filter: (source) => this.isSafeWorkspacePath(repoPath, source) });
+      let mountDir = repoPath;
+      if (!options.persistToRepo) {
+        await fs.mkdir(workspaceDir, { recursive: false, mode: 0o700 });
+        await fs.cp(repoPath, workspaceDir, { recursive: true, verbatimSymlinks: true, filter: (source) => this.isSafeWorkspacePath(repoPath, source) });
+        mountDir = workspaceDir;
+      }
       const dockerArgs = [
         'run', '--rm', '--name', containerName,
-        '--network', 'none', '--read-only', '--cap-drop', 'ALL',
+        ...(options.network ? [] : ['--network', 'none']),
+        '--read-only', '--cap-drop', 'ALL',
         '--security-opt', 'no-new-privileges', '--pids-limit', '128',
         '--memory', process.env.SANDBOX_MEMORY || '2g', '--cpus', process.env.SANDBOX_CPUS || '1.5', '--user', `${containerUid}:${containerGid}`,
-        '--tmpfs', '/tmp:rw,noexec,nosuid,size=64m', '--env', 'HOME=/tmp',
-        '--volume', `${workspaceDir}:/workspace:rw`, '--workdir', '/workspace',
+        '--tmpfs', `/tmp:rw,noexec,nosuid,size=${tmpfsSize}`, '--env', 'HOME=/tmp',
+        '--volume', `${mountDir}:/workspace:rw`, '--workdir', '/workspace',
         sandboxImage, options.command.executable, ...options.command.args,
       ];
 
@@ -58,7 +80,7 @@ export class SandboxController {
       return { success: false, output: this.redactSecrets(message), exitCode: 1 };
     } finally {
       await this.runProcess('docker', ['rm', '-f', containerName], 10_000).catch(() => undefined);
-      await fs.rm(workspaceDir, { recursive: true, force: true }).catch(() => undefined);
+      if (!options.persistToRepo) await fs.rm(workspaceDir, { recursive: true, force: true }).catch(() => undefined);
     }
   }
 

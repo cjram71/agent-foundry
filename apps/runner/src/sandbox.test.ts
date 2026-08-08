@@ -30,6 +30,32 @@ test('runs allowed commands without interpreting shell metacharacters on the hos
   await fs.rm(root, { recursive: true, force: true });
 });
 
+test('dependency install prep stage: network up, scripts disabled, persists to the repo', needsDocker, async () => {
+  const installRepo = `${root}/fixture-install`;
+  await fs.mkdir(installRepo, { recursive: true });
+  await fs.writeFile(`${installRepo}/package.json`, JSON.stringify({
+    name: 'fixture-install', version: '1.0.0', private: true,
+    dependencies: { 'is-odd': '3.0.1' },
+    scripts: { postinstall: `touch ${marker}` },
+  }));
+  await fs.rm(marker, { force: true });
+  process.env.FOUNDRY_REPO_ROOT = root;
+  const result = await new SandboxController().executeInSandbox({
+    taskId: 'install-test', repoPath: installRepo,
+    command: { executable: 'npm', args: ['install', '--ignore-scripts', '--no-package-lock', '--no-audit', '--no-fund'] },
+    timeoutMs: 180_000, network: true, persistToRepo: true, tmpfsSize: '1g',
+  });
+  assert.equal(result.success, true, result.output.slice(-2000));
+  // persistToRepo: node_modules landed on the host-side repo, not a temp copy.
+  await fs.stat(`${installRepo}/node_modules/is-odd/package.json`);
+  // --no-package-lock: no lockfile was written.
+  await assert.rejects(fs.stat(`${installRepo}/package-lock.json`));
+  // --ignore-scripts: the fixture's malicious postinstall never executed,
+  // neither on the host nor in the container touchable tmp space.
+  await assert.rejects(fs.access(marker));
+  await fs.rm(root, { recursive: true, force: true });
+});
+
 test('rejects repository paths outside the configured root', async () => {
   process.env.FOUNDRY_REPO_ROOT = root;
   // Path must (a) exist on every test host and (b) be outside the root:
