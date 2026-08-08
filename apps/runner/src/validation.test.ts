@@ -77,11 +77,27 @@ test('rejects oversized pipelines deterministically', async () => {
 });
 
 test('ValidationStageError carries the structured failure for the worker', () => {
-  const failedStage = { stage: 'dependencies', command: 'npm install …', success: false, exitCode: 1, durationMs: 12, outputTail: 'boom' };
+  const failedStage = { stage: 'dependencies', command: 'npm install …', success: false, exitCode: 1, durationMs: 12, outputTail: 'boom', infraFailure: false };
   const error = new ValidationStageError({ ok: false, stages: [failedStage], failedStage }, failedStage);
   assert.match(error.message, /dependencies/);
   assert.match(error.message, /boom/);
   assert.equal(error.failingStage.stage, 'dependencies');
+  assert.equal(error.failingStage.infraFailure, false);
+});
+
+test('threads the sandbox infraFailure classification into the stage result (P11)', async () => {
+  const sandbox: SandboxLike = {
+    executeInSandbox: async () => ({ success: false, exitCode: 1, output: 'Failed to prepare sandbox image node:20-bookworm-slim', infraFailure: true }),
+  };
+  const report = await runValidationPipeline({ sandbox, taskId: 't1', repoPath: '/x', commands: [TEST] });
+  assert.equal(report.failedStage?.stage, 'dependencies');
+  assert.equal(report.failedStage?.infraFailure, true, 'repair loop must route machinery faults to INFRASTRUCTURE_FAILED');
+});
+
+test('an honest stage failure is never classified as infrastructure', async () => {
+  const { sandbox } = fakeSandbox([{ success: false, exitCode: 1, output: 'tests failed' }]);
+  const report = await runValidationPipeline({ sandbox, taskId: 't1', repoPath: '/x', commands: [TEST] });
+  assert.equal(report.failedStage?.infraFailure, false, 'payload failure -> repairable, never infra');
 });
 
 test('deriveValidationCommands returns the allowlist in canonical order', async () => {

@@ -19,7 +19,7 @@ export const INSTALL_COMMAND: ValidationCommand = {
 /** Structural view of the sandbox so the pipeline can be unit-tested without
  *  Docker. SandboxController satisfies this interface. */
 export interface SandboxLike {
-  executeInSandbox(options: SandboxOptions): Promise<{ success: boolean; output: string; exitCode: number }>;
+  executeInSandbox(options: SandboxOptions): Promise<{ success: boolean; output: string; exitCode: number; infraFailure?: boolean }>;
 }
 
 export interface ValidationStageResult {
@@ -29,6 +29,9 @@ export interface ValidationStageResult {
   exitCode: number;
   durationMs: number;
   outputTail: string;
+  /** True only when the sandbox machinery failed (P11) — deterministic
+   *  signal that rewriting code cannot fix this stage. */
+  infraFailure: boolean;
 }
 
 export interface ValidationReport {
@@ -87,6 +90,7 @@ async function runStage(
     exitCode: result.exitCode,
     durationMs: Date.now() - started,
     outputTail: result.output.slice(-OUTPUT_TAIL_BYTES),
+    infraFailure: Boolean(result.infraFailure),
   };
 }
 

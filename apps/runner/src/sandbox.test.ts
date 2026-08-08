@@ -67,4 +67,7 @@ test('rejects repository paths outside the configured root', async () => {
   });
   assert.equal(result.success, false);
   assert.match(result.output, /outside FOUNDRY_REPO_ROOT/);
+  // Admission rejection is a policy outcome, never an infrastructure fault
+  // (P11 repair-loop routing depends on this distinction).
+  assert.equal(result.infraFailure, false);
 });

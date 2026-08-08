@@ -34,8 +34,28 @@ export interface SandboxOptions {
 
 interface ProcessResult { output: string; exitCode: number; timedOut: boolean; }
 
+export interface SandboxResult {
+  success: boolean;
+  output: string;
+  exitCode: number;
+  /** True when the SANDBOX MACHINERY failed (image pull, daemon, spawn),
+   *  not the payload. Deterministic routing signal for the repair loop:
+   *  infrastructure failures are not repairable by rewriting code. Admission
+   *  rejections (command allowlist, path gate) are never infra failures. */
+  infraFailure: boolean;
+}
+
+/** Thrown for deterministic admission rejections (repo-path gate). These are
+ *  policy outcomes — never infrastructure faults. */
+export class SandboxAdmissionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SandboxAdmissionError';
+  }
+}
+
 export class SandboxController {
-  public async executeInSandbox(options: SandboxOptions): Promise<{ success: boolean; output: string; exitCode: number }> {
+  public async executeInSandbox(options: SandboxOptions): Promise<SandboxResult> {
     this.validateCommand(options.command);
     const taskSlug = options.taskId.replace(/[^a-zA-Z0-9_.-]/g, '-').slice(0, 32) || 'unknown';
     const containerName = `foundry-sandbox-${taskSlug}-${Date.now()}`;
@@ -73,11 +93,13 @@ export class SandboxController {
 
       console.log(`[Sandbox] Spawning isolated container for task ${taskSlug}...`);
       const result = await this.runProcess('docker', dockerArgs, options.timeoutMs || 60_000);
-      if (result.timedOut) return { success: false, output: this.redactSecrets(`Validation timed out.\n${result.output}`), exitCode: 124 };
-      return { success: result.exitCode === 0, output: this.redactSecrets(result.output), exitCode: result.exitCode };
+      if (result.timedOut) return { success: false, output: this.redactSecrets(`Validation timed out.\n${result.output}`), exitCode: 124, infraFailure: false };
+      return { success: result.exitCode === 0, output: this.redactSecrets(result.output), exitCode: result.exitCode, infraFailure: false };
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown sandbox error';
-      return { success: false, output: this.redactSecrets(message), exitCode: 1 };
+      // Admission rejections are policy outcomes; everything else that failed
+      // before the payload ran (image prep, daemon, spawn) is infrastructure.
+      return { success: false, output: this.redactSecrets(message), exitCode: 1, infraFailure: !(error instanceof SandboxAdmissionError) };
     } finally {
       await this.runProcess('docker', ['rm', '-f', containerName], 10_000).catch(() => undefined);
       if (!options.persistToRepo) await fs.rm(workspaceDir, { recursive: true, force: true }).catch(() => undefined);
@@ -103,9 +125,9 @@ export class SandboxController {
     const allowedRoot = path.resolve(process.env.FOUNDRY_REPO_ROOT || '/tmp/foundry-repos');
     const resolved = await fs.realpath(repoPath);
     const relative = path.relative(allowedRoot, resolved);
-    if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('Repository path is outside FOUNDRY_REPO_ROOT');
+    if (relative.startsWith('..') || path.isAbsolute(relative)) throw new SandboxAdmissionError('Repository path is outside FOUNDRY_REPO_ROOT');
     const stat = await fs.stat(resolved);
-    if (!stat.isDirectory()) throw new Error('Repository path is not a directory');
+    if (!stat.isDirectory()) throw new SandboxAdmissionError('Repository path is not a directory');
     return resolved;
   }
 
