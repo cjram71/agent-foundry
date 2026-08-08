@@ -87,7 +87,8 @@ docker exec -i foundry_postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
 docker exec -i foundry_postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c \
   "DELETE FROM _prisma_migrations WHERE migration_name IN
    ('20260803074008_init','20260804103000_project_public_links');"
-set -a; . ./.env; set +a
+source scripts/load-env.sh
+foundry_load_env .env
 npx prisma migrate resolve --schema packages/database/prisma/schema.prisma \
   --applied 20260808080000_baseline_init
 

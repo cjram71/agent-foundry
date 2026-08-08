@@ -16,9 +16,8 @@ if [[ ! -f .env ]]; then
   echo "backup: .env not found — run this on the Agent Foundry host." >&2
   exit 1
 fi
-set -a
-source .env
-set +a
+source scripts/load-env.sh
+foundry_load_env .env
 
 for name in POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB; do
   if [[ -z "${!name:-}" ]]; then
@@ -44,7 +43,7 @@ install -d -m 700 "$TARGET"
 # A failed dump must never leave a plausible-looking backup behind.
 trap 'rm -rf "$TARGET"' ERR
 
-echo "backup: dumping ${POSTGRES_DB} (logical, custom format) at ${STAMP}Z"
+echo "backup: dumping ${POSTGRES_DB} (logical, custom format) at ${STAMP}"
 docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" foundry_postgres \
   pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --format=custom --compress=6 \
   > "$TARGET/database.pgdump"

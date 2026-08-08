@@ -14,6 +14,10 @@ export function isAuthApi(pathname: string): boolean {
   return pathname.startsWith('/api/auth');
 }
 
+export function isPublicApi(pathname: string): boolean {
+  return isAuthApi(pathname) || pathname === '/api/health';
+}
+
 /**
  * Decision matrix enforced by proxy.ts for every matched request:
  *  - /api/auth/* is always reachable (login must be callable unauthenticated),
@@ -23,7 +27,7 @@ export function isAuthApi(pathname: string): boolean {
  *  - everything else is allowed.
  */
 export function decideRequest(pathname: string, authenticated: boolean): GuardVerdict {
-  if (isAuthApi(pathname)) return { action: 'allow' };
+  if (isPublicApi(pathname)) return { action: 'allow' };
   const isApi = pathname.startsWith('/api/');
   if (!authenticated) {
     if (isAuthPage(pathname)) return { action: 'allow' };

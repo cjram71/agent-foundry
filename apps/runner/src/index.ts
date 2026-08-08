@@ -10,7 +10,7 @@ import { GitHubClient } from '@foundry/github';
 import { transitionTask, emitTaskEvent, tryEmitTaskEvent } from '@foundry/state-machine';
 import { ReviewerAgent } from './reviewer';
 import { SandboxController } from './sandbox';
-import { runValidationPipeline, deriveValidationCommands, ValidationStageError } from './validation';
+import { runValidationPipeline, deriveValidationPlan, ValidationStageError } from './validation';
 import { parseRepairBudget, buildCoderPrompt, buildRepairPrompt, ReviewRejectedError } from './repair';
 import { applyChanges, validateCoderResult, SecurityViolationError, SAFE_EXTENSIONS, BLOCKED_NAMES } from './coder';
 import { createStopSupervisor, deferJobWhileStopped, parseWedgeTimeoutMinutes, WEDGEABLE_STATES } from '@foundry/ops';
@@ -24,14 +24,34 @@ const connection = new IORedis({ host: '127.0.0.1', port: 6379, password: proces
 const apiKey = process.env.GEMINI_API_KEY;
 if (!apiKey) throw new Error('GEMINI_API_KEY is required for the runner');
 const ai = new GoogleGenAI({ apiKey });
-const MAX_CONTEXT_BYTES = 180_000;
+const MAX_CONTEXT_BYTES = 45_000;
 const MAX_FILE_BYTES = 80_000;
+const CODER_JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    summary: { type: 'string' },
+    changes: { type: 'array', minItems: 1, maxItems: 20, items: {
+      type: 'object',
+      properties: { path: { type: 'string' }, edits: { type: 'array', minItems: 1, maxItems: 20, items: { type: 'object', properties: { find: { type: 'string' }, replace: { type: 'string' } }, required: ['find', 'replace'], additionalProperties: false } }, reason: { type: 'string' } },
+      required: ['path', 'edits', 'reason'],
+      additionalProperties: false,
+    } },
+    validationNotes: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['summary', 'changes', 'validationNotes'],
+  additionalProperties: false,
+} as const;
 
-async function repositoryContext(root: string): Promise<string> {
+async function repositoryContext(root: string, preferredFiles: string[] = []): Promise<string> {
+  const preferred = new Set(preferredFiles.map(value => value.replace(/\\/g, '/')));
   const chunks: string[] = []; let used = 0;
   async function walk(directory: string) {
     const entries = await fs.readdir(directory, { withFileTypes: true });
-    entries.sort((a,b) => a.name.localeCompare(b.name));
+    entries.sort((a,b) => {
+      const aPath = path.relative(root, path.join(directory, a.name)).replace(/\\/g,'/');
+      const bPath = path.relative(root, path.join(directory, b.name)).replace(/\\/g,'/');
+      return Number(preferred.has(bPath)) - Number(preferred.has(aPath)) || a.name.localeCompare(b.name);
+    });
     for (const entry of entries) {
       if (used >= MAX_CONTEXT_BYTES) return;
       if (['.git','node_modules','.next','dist','coverage'].includes(entry.name) || BLOCKED_NAMES.has(entry.name) || entry.name.startsWith('.env')) continue;
@@ -58,14 +78,14 @@ async function repositoryContext(root: string): Promise<string> {
 
 async function generateCoderResponse(prompt: string) {
   try {
-    const response = await ai.models.generateContent({ model: 'gemini-3.6-flash', contents: prompt, config: { responseMimeType: 'application/json' } });
+    const response = await ai.models.generateContent({ model: 'gemini-3.6-flash', contents: prompt, config: { responseMimeType: 'application/json', responseJsonSchema: CODER_JSON_SCHEMA, maxOutputTokens: 32768 } });
     return { text: response.text || '', usageMetadata: response.usageMetadata, provider: 'google', model: 'gemini-3.6-flash' };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (!/(?:429|503|UNAVAILABLE|RESOURCE_EXHAUSTED|quota exceeded|rate.?limit|high demand|temporar)/i.test(message)) throw error;
     const endpoint = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
     const model = process.env.OLLAMA_MODEL || 'qwen2.5-coder:3b';
-    const response = await fetch(`${endpoint}/api/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, prompt, stream: true, format: { type: 'object', properties: { summary: { type: 'string' }, changes: { type: 'array', minItems: 1, maxItems: 20, items: { type: 'object', properties: { path: { type: 'string' }, content: { type: 'string' }, reason: { type: 'string' } }, required: ['path', 'content', 'reason'], additionalProperties: false } }, validationNotes: { type: 'array', items: { type: 'string' } } }, required: ['summary', 'changes', 'validationNotes'], additionalProperties: false }, options: { temperature: 0.1, num_ctx: 16384 } }), signal: AbortSignal.timeout(900_000) });
+    const response = await fetch(`${endpoint}/api/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, prompt, stream: true, format: CODER_JSON_SCHEMA, options: { temperature: 0.1, num_ctx: 16384 } }), signal: AbortSignal.timeout(600_000) });
     if (!response.ok) throw new Error(`Ollama fallback failed with HTTP ${response.status}`);
     const parts = (await response.text()).trim().split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line) as { response?: string; prompt_eval_count?: number; eval_count?: number; done?: boolean });
     const text = parts.map(part => part.response || '').join('');
@@ -117,7 +137,13 @@ async function executeTask(taskId: string, jobId: string | undefined) {
       prisma.task.update({ where: { id: taskId }, data: { branchName } }),
       prisma.taskAttempt.update({ where: { id: attempt.id }, data: { branchName, workspacePath: repoPath } }),
     ]);
-    const context = await repositoryContext(repoPath);
+    const plannedFiles = (() => {
+      try {
+        const value = JSON.parse(planner.outputSummary || '{}') as { steps?: Array<{ files?: unknown }> };
+        return (value.steps || []).flatMap(step => Array.isArray(step.files) ? step.files : []).filter((file): file is string => typeof file === 'string' && !/[*?[]]/.test(file)).slice(0, 8);
+      } catch { return [] as string[]; }
+    })();
+    const context = await repositoryContext(repoPath, plannedFiles);
     // P12 human loop: after "request changes" + resubmit, the newest note is
     // injected into the coder prompt (bounded in the builder), addressing the
     // same approved plan instead of restarting planning.
@@ -127,23 +153,36 @@ async function executeTask(taskId: string, jobId: string | undefined) {
     const promptParts = { repository: `${task.project.githubOwner}/${task.project.githubRepo}`, title: task.title, instruction: task.completeInstruction, planSummary: planner.outputSummary, context, humanFeedback: latestChangeNote };
     const repairBudget = parseRepairBudget(process.env.MAX_REPAIR_ATTEMPTS);
     const changedPaths = new Set<string>();
-    const commands = await deriveValidationCommands(repoPath);
+    const validationPlan = await deriveValidationPlan(repoPath);
+    const commands = validationPlan.commands;
     const sandbox = new SandboxController();
 
     // One coder invocation per cycle: cycle 0 builds, later cycles repair a
     // specific failure. Every cycle is validated by the same bounds; the
     // latest cycle's summary is what ships in the draft PR.
-    const runCoder = async (prompt: string, cycle: number): Promise<{ summary: string; tokens: number }> => {
-      const response = await generateCoderResponse(prompt);
-      const text = response.text?.trim(); if (!text) throw new Error('Coder returned no changes');
-      const normalizedJson = text.replace(/[\u0000-\u001F]/g, ' ');
-      const parsed = validateCoderResult(JSON.parse(normalizedJson));
-      await applyChanges(repoPath, parsed.changes);
-      for (const change of parsed.changes) changedPaths.add(change.path);
-      const tokens = response.usageMetadata?.totalTokenCount || 0;
-      await prisma.agentRun.update({ where: { id: run.id }, data: { provider: response.provider, model: response.model, promptHash: createHash('sha256').update(prompt).digest('hex'), tokenUsage: { increment: tokens }, outputSummary: parsed.summary } });
-      await tryEmitTaskEvent(prisma, { taskId, type: 'code_generated', actor: 'runner', actorType: 'worker', attemptId: attempt.id, correlationId: jobId, payload: { provider: response.provider, model: response.model, files: parsed.changes.length, repairCycle: cycle } });
-      return { summary: parsed.summary, tokens };
+    const runCoder = async (basePrompt: string, cycle: number): Promise<{ summary: string; tokens: number }> => {
+      let prompt = basePrompt;
+      let totalTokens = 0;
+      for (let formatAttempt = 0; formatAttempt < 2; formatAttempt += 1) {
+        const response = await generateCoderResponse(prompt);
+        totalTokens += response.usageMetadata?.totalTokenCount || 0;
+        try {
+          const text = response.text?.trim(); if (!text) throw new Error('Coder returned no changes');
+          const parsed = validateCoderResult(JSON.parse(text));
+          await applyChanges(repoPath, parsed.changes);
+          for (const change of parsed.changes) changedPaths.add(change.path);
+          await prisma.agentRun.update({ where: { id: run.id }, data: { provider: response.provider, model: response.model, promptHash: createHash('sha256').update(basePrompt).digest('hex'), tokenUsage: { increment: totalTokens }, outputSummary: parsed.summary } });
+          await tryEmitTaskEvent(prisma, { taskId, type: 'code_generated', actor: 'runner', actorType: 'worker', attemptId: attempt.id, correlationId: jobId, payload: { provider: response.provider, model: response.model, files: parsed.changes.length, repairCycle: cycle, formatAttempts: formatAttempt + 1 } });
+          return { summary: parsed.summary, tokens: totalTokens };
+        } catch (error) {
+          if (error instanceof SecurityViolationError || formatAttempt === 1) throw error;
+          const detail = error instanceof Error ? error.message.slice(0, 500) : 'invalid response';
+          prompt = `${basePrompt}
+
+Your previous response could not be applied: ${detail}. Return the complete result again as schema-valid JSON only. For an ambiguous or missing exact edit, copy a longer unique find string verbatim from the repository context. Do not use Markdown fences or full-file rewrites.`;
+        }
+      }
+      throw new Error('Coder failed to produce schema-valid JSON');
     };
 
     let { summary: changeSummary, tokens: cycleTokens } = await runCoder(buildCoderPrompt(promptParts), 0);
@@ -158,7 +197,7 @@ async function executeTask(taskId: string, jobId: string | undefined) {
     for (;;) {
       await transition('VALIDATING', { reason: repairCycle ? `repair cycle ${repairCycle}: validating revised changes` : 'coder returned changes; running validation', legacyStatus: 'testing', extraTaskData: { tokenUsage: { increment: cycleTokens } } });
       await tryEmitTaskEvent(prisma, { taskId, type: 'validation_started', actor: 'runner', actorType: 'worker', attemptId: attempt.id, correlationId: jobId, payload: { repairCycle } });
-      const report = await runValidationPipeline({ sandbox, taskId, repoPath, commands: commands.slice(0, -1) });
+      const report = await runValidationPipeline({ sandbox, taskId, repoPath, commands: commands.slice(0, -1), install: validationPlan.install });
       if (!report.ok) {
         const failedStage = report.failedStage!;
         await tryEmitTaskEvent(prisma, { taskId, type: 'validation_failed', actor: 'runner', actorType: 'worker', attemptId: attempt.id, correlationId: jobId, payload: { stage: failedStage.stage, command: failedStage.command, exitCode: failedStage.exitCode, durationMs: failedStage.durationMs, repairCycle } });

@@ -64,6 +64,30 @@ export class ReviewerAgent {
     this.ai = new GoogleGenAI({ apiKey });
   }
 
+  private async generateReview(prompt: string): Promise<string> {
+    try {
+      const response = await this.ai.models.generateContent({ model: 'gemini-3.6-flash', contents: prompt });
+      return response.text?.trim() || '';
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/(?:429|503|UNAVAILABLE|RESOURCE_EXHAUSTED|quota|rate.?limit|high demand|temporar)/i.test(message)) throw error;
+      const endpoint = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
+      const model = process.env.OLLAMA_MODEL || 'deepseek-coder-v2:16b-lite-instruct-q4_K_M';
+      const response = await fetch(`${endpoint}/api/generate`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ model, prompt, stream: false, options: { temperature: 0.1, num_ctx: 8192 } }),
+        signal: AbortSignal.timeout(300_000),
+      });
+      if (!response.ok) {
+        const detail = (await response.text()).trim().slice(0, 500);
+        throw new Error(`Ollama reviewer failed with HTTP ${response.status}: ${detail || 'no response body'}`);
+      }
+      const value = await response.json() as { response?: unknown };
+      if (typeof value.response !== 'string' || !value.response.trim()) throw new Error('Ollama reviewer returned no decision');
+      return value.response.trim();
+    }
+  }
+
   public async reviewAndValidate(taskId: string, repoPath: string, validationCommand: ValidationCommand, diff: string, fidelity: FidelityContext): Promise<ReviewResult> {
     const validationResult = await this.sandbox.executeInSandbox({ taskId, repoPath, command: validationCommand });
     if (!validationResult.success) {
@@ -71,12 +95,10 @@ export class ReviewerAgent {
     }
 
     const commandLabel = [validationCommand.executable, ...validationCommand.args].join(' ');
-    const [safetyResponse, fidelityResponse] = await Promise.all([
-      this.ai.models.generateContent({ model: 'gemini-3.6-flash', contents: buildSafetyPrompt(commandLabel, validationResult.output, diff) }),
-      this.ai.models.generateContent({ model: 'gemini-3.6-flash', contents: buildFidelityPrompt(fidelity, diff) }),
-    ]);
-    const safetyText = safetyResponse.text?.trim() || 'REJECTED: safety reviewer returned no decision.';
-    const fidelityText = fidelityResponse.text?.trim() || 'REJECTED: plan-fidelity reviewer returned no decision.';
+    // Run sequentially so a CPU-only Ollama fallback never loads two large
+    // generations concurrently on the VPS.
+    const safetyText = await this.generateReview(buildSafetyPrompt(commandLabel, validationResult.output, diff)) || 'REJECTED: safety reviewer returned no decision.';
+    const fidelityText = await this.generateReview(buildFidelityPrompt(fidelity, diff)) || 'REJECTED: plan-fidelity reviewer returned no decision.';
     const safetyPassed = parseReviewVerdict(safetyText) === true;
     const fidelityPassed = parseReviewVerdict(fidelityText) === true;
     return {
