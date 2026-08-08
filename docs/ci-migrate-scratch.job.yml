@@ -55,6 +55,9 @@
       # ---- P5 additions: state-machine package (dashboard depends on it) ----
       - name: State machine unit tests (transition table, concurrency, audit)
         run: npm test --workspace=packages/state-machine
+      # ---- P6 additions: event + policy packages (dashboard depends on them) ----
+      - name: Policy engine unit tests (risk rules, ceilings, prohibited floor)
+        run: npm test --workspace=packages/policy
       - name: Build workspace packages in dependency order
         run: npm run build
       - name: Dashboard typecheck

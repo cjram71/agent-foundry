@@ -4,6 +4,8 @@ import prisma from '@/lib/prisma';
 import { getSession, isSameOrigin } from '@/lib/auth';
 import { enqueueExecution, enqueuePlan } from '@/lib/queue';
 import { transitionTask, emitTaskEvent } from '@foundry/state-machine';
+import { classifyTaskRisk, evaluateTaskAgainstPolicy, asDeclaredRisk } from '@foundry/policy';
+import { loadActivePolicy } from '@/lib/policy';
 type PullRequestStatus = { state: string; mergedAt: string | null; isDraft: boolean; statusCheckRollup: Array<{ status?: string; conclusion?: string; state?: string }> };
 function runGitHub(args: string[]): Promise<string> { return new Promise((resolve,reject)=>{const child=spawn('gh',args,{shell:false,windowsHide:true,env:{...process.env,GH_PROMPT_DISABLED:'1'},stdio:['ignore','pipe','pipe'],timeout:30000});let stdout='',stderr='';child.stdout.on('data',c=>stdout+=c.toString());child.stderr.on('data',c=>stderr+=c.toString());child.on('error',reject);child.on('close',code=>code===0?resolve(stdout):reject(new Error(stderr.slice(0,500))));}); }
 async function readPullRequestStatus(url:string,owner:string,repo:string){const match=/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)$/.exec(url);if(!match||match[1].toLowerCase()!==owner.toLowerCase()||match[2].toLowerCase()!==repo.toLowerCase())throw new Error('PR repository mismatch');const output=await runGitHub(['pr','view',match[3],'--repo',`${owner}/${repo}`,'--json','state,mergedAt,isDraft,statusCheckRollup']);const pr=JSON.parse(output) as PullRequestStatus;const checks=pr.statusCheckRollup||[];const failed=checks.filter(c=>['FAILURE','ERROR','CANCELLED','TIMED_OUT','ACTION_REQUIRED'].includes(c.conclusion||c.state||'')).length;const pending=checks.filter(c=>['QUEUED','IN_PROGRESS','PENDING','EXPECTED'].includes(c.status||c.state||'')).length;return{state:pr.state,mergedAt:pr.mergedAt,isDraft:pr.isDraft,checks:{total:checks.length,failed,pending,passed:Math.max(0,checks.length-failed-pending)}};}
@@ -49,6 +51,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (current.status !== 'awaiting_plan_approval') return NextResponse.json({ error: `Task is already ${current.status.replaceAll('_', ' ')}.` }, { status: 409 });
     const approved = body.action === 'approve_plan';
     const evaluationOnly = current.title.startsWith('AI Project Manager Evaluation');
+    if (approved) {
+      const policy = await loadActivePolicy(prisma, current.projectId);
+      const risk = evaluationOnly
+        ? { level: asDeclaredRisk(current.riskLevel), matched: [] as Array<{ id: string }> }
+        : classifyTaskRisk({ declaredRisk: asDeclaredRisk(current.riskLevel), title: current.title, instruction: current.completeInstruction });
+      const decision = evaluateTaskAgainstPolicy(policy, risk);
+      if (!decision.allowed) {
+        await prisma.auditEvent.create({ data: { actor: auth.session!.userId, action: 'policy.task_blocked', target: id, result: 'rejected', metadata: { stage: 'plan_approval', level: risk.level, rules: decision.matchedRules, policyCeiling: policy.maxTaskRisk, evaluationOnly } } });
+        return NextResponse.json({ error: 'Approval was blocked by the project policy.', reasons: decision.reasons }, { status: 409 });
+      }
+    }
     if (approved && !evaluationOnly && process.env.GITHUB_CLI_ENABLED !== 'true' && (!process.env.GITHUB_INSTALLATION_ID || !process.env.GITHUB_PRIVATE_KEY_PATH)) {
       return NextResponse.json({ error: 'Plan saved, but execution is locked until the GitHub App installation and private key are configured.' }, { status: 503 });
     }

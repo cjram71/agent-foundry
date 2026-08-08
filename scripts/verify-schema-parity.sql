@@ -55,6 +55,7 @@ BEGIN
       ('User',       ARRAY['id','email','passwordHash','role','createdAt','lastLoginAt']),
       ('Session',    ARRAY['id','userId','createdAt','expiresAt','lastSeenAt','ip','userAgent','revokedAt']),
       ('Project',    ARRAY['id','name','githubOwner','githubRepo','defaultBranch','projectType','productionUrl','vercelProjectRef','vercelTeamRef','authorisedStatus','spendingLimit','createdAt']),
+      ('ProjectPolicy', ARRAY['id','projectId','version','active','maxTaskRisk','requirePlanApproval','requireMergeApproval','createdBy','createdAt']),
       ('Task',       ARRAY['id','projectId','title','completeInstruction','status','state','riskLevel','assignedAgent','branchName','pullRequestUrl','previewUrl','tokenUsage','estimatedCost','currentAttemptId','createdAt','updatedAt','startedAt','completedAt']),
       ('TaskAttempt', ARRAY['id','taskId','attemptNumber','status','correlationId','workspacePath','branchName','commitSha','outcomeSummary','startedAt','endedAt']),
       ('TaskStateTransition', ARRAY['id','taskId','attemptId','fromState','toState','actor','actorType','reason','correlationId','metadata','createdAt']),
@@ -132,6 +133,14 @@ BEGIN
     AND is_nullable='YES';
   IF NOT FOUND THEN RAISE EXCEPTION 'TaskEvent.attemptId must be nullable (SetNull FK)'; END IF;
 
+  PERFORM 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='ProjectPolicy' AND column_name='maxTaskRisk'
+    AND is_nullable='NO' AND column_default LIKE '%high%';
+  IF NOT FOUND THEN RAISE EXCEPTION 'ProjectPolicy.maxTaskRisk must be NOT NULL DEFAULT high'; END IF;
+
+  PERFORM 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='ProjectPolicy' AND column_name='active'
+    AND data_type='boolean' AND is_nullable='NO';
+  IF NOT FOUND THEN RAISE EXCEPTION 'ProjectPolicy.active must be boolean NOT NULL'; END IF;
+
   PERFORM 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Task' AND column_name='riskLevel'
     AND column_default LIKE '%medium%';
   IF NOT FOUND THEN RAISE EXCEPTION 'Task.riskLevel must DEFAULT medium'; END IF;
@@ -179,11 +188,17 @@ BEGIN
   PERFORM 1 FROM pg_indexes WHERE schemaname='public' AND tablename='TaskEvent' AND indexname='TaskEvent_createdAt_idx';
   IF NOT FOUND THEN RAISE EXCEPTION 'Index TaskEvent_createdAt_idx missing'; END IF;
 
+  PERFORM 1 FROM pg_indexes WHERE schemaname='public' AND tablename='ProjectPolicy' AND indexname='ProjectPolicy_projectId_version_key'
+    AND indexdef ILIKE '%UNIQUE%';
+  IF NOT FOUND THEN RAISE EXCEPTION 'Unique index ProjectPolicy_projectId_version_key missing'; END IF;
+  PERFORM 1 FROM pg_indexes WHERE schemaname='public' AND tablename='ProjectPolicy' AND indexname='ProjectPolicy_projectId_active_idx';
+  IF NOT FOUND THEN RAISE EXCEPTION 'Index ProjectPolicy_projectId_active_idx missing'; END IF;
+
   -- 6. Foreign keys with CASCADE delete semantics (schema.prisma onDelete: Cascade)
   FOR c IN
     SELECT conname, conrelid::regclass::text AS child, confdeltype, confupdtype
       FROM pg_constraint
-      WHERE contype='f' AND conname IN ('Task_projectId_fkey','AgentRun_taskId_fkey','Approval_taskId_fkey','Session_userId_fkey','TaskAttempt_taskId_fkey','TaskStateTransition_taskId_fkey','TaskEvent_taskId_fkey')
+      WHERE contype='f' AND conname IN ('Task_projectId_fkey','AgentRun_taskId_fkey','Approval_taskId_fkey','Session_userId_fkey','TaskAttempt_taskId_fkey','TaskStateTransition_taskId_fkey','TaskEvent_taskId_fkey','ProjectPolicy_projectId_fkey')
   LOOP
     IF c.confdeltype <> 'c' OR c.confupdtype <> 'c' THEN
       RAISE EXCEPTION 'FK % on % must be ON DELETE CASCADE ON UPDATE CASCADE (got del=% up=%)',
@@ -191,8 +206,8 @@ BEGIN
     END IF;
   END LOOP;
   IF (SELECT COUNT(*) FROM pg_constraint WHERE contype='f' AND conname IN
-        ('Task_projectId_fkey','AgentRun_taskId_fkey','Approval_taskId_fkey','Session_userId_fkey','TaskAttempt_taskId_fkey','TaskStateTransition_taskId_fkey','TaskEvent_taskId_fkey')) <> 7 THEN
-    RAISE EXCEPTION 'Expected 7 CASCADE foreign keys to exist';
+        ('Task_projectId_fkey','AgentRun_taskId_fkey','Approval_taskId_fkey','Session_userId_fkey','TaskAttempt_taskId_fkey','TaskStateTransition_taskId_fkey','TaskEvent_taskId_fkey','ProjectPolicy_projectId_fkey')) <> 8 THEN
+    RAISE EXCEPTION 'Expected 8 CASCADE foreign keys to exist';
   END IF;
 
   -- 6b. attempt-linked history must survive attempt deletion (onDelete: SetNull)

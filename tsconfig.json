@@ -11,6 +11,9 @@
       "path": "./packages/state-machine"
     },
     {
+      "path": "./packages/policy"
+    },
+    {
       "path": "./apps/orchestrator"
     },
     {

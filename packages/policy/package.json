@@ -1,0 +1,16 @@
+{
+  "name": "@foundry/policy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Deterministic project policy engine for Agent Foundry (risk classification, policy ceilings, admission decisions). No AI is involved in these decisions.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "node --experimental-strip-types --experimental-loader ./test/ts-resolve-loader.mjs --test --test-force-exit \"src/__tests__/*.test.ts\""
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0"
+  }
+}
