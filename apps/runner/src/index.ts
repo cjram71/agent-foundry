@@ -159,7 +159,13 @@ async function executeTask(taskId: string, jobId: string | undefined) {
       prisma.taskAttempt.update({ where: { id: attempt.id }, data: { branchName, workspacePath: repoPath } }),
     ]);
     const context = await repositoryContext(repoPath);
-    const promptParts = { repository: `${task.project.githubOwner}/${task.project.githubRepo}`, title: task.title, instruction: task.completeInstruction, planSummary: planner.outputSummary, context };
+    // P12 human loop: after "request changes" + resubmit, the newest note is
+    // injected into the coder prompt (bounded in the builder), addressing the
+    // same approved plan instead of restarting planning.
+    const latestChangeNote = task.approvals
+      .filter(approval => approval.approvalType === 'merge' && approval.decision === 'changes_requested' && approval.comments)
+      .sort((a, b) => b.requestedAt.getTime() - a.requestedAt.getTime())[0]?.comments || undefined;
+    const promptParts = { repository: `${task.project.githubOwner}/${task.project.githubRepo}`, title: task.title, instruction: task.completeInstruction, planSummary: planner.outputSummary, context, humanFeedback: latestChangeNote };
     const repairBudget = parseRepairBudget(process.env.MAX_REPAIR_ATTEMPTS);
     const changedPaths = new Set<string>();
     const commands = await deriveValidationCommands(repoPath);
@@ -209,9 +215,11 @@ async function executeTask(taskId: string, jobId: string | undefined) {
       await tryEmitTaskEvent(prisma, { taskId, type: 'validation_passed', actor: 'runner', actorType: 'worker', attemptId: attempt.id, correlationId: jobId, payload: { commands: commands.map(command => `${command.executable} ${command.args.join(' ')}`), stages: report.stages.map(stage => ({ stage: stage.stage, command: stage.command, exitCode: stage.exitCode, durationMs: stage.durationMs })), repairCyclesCompleted: repairCycle } });
       await transition('REVIEWING', { reason: 'validation produced a diff; safety review starting', legacyStatus: 'reviewing' });
       await tryEmitTaskEvent(prisma, { taskId, type: 'review_started', actor: 'runner', actorType: 'worker', attemptId: attempt.id, correlationId: jobId, payload: { repairCycle } });
-      const review = await new ReviewerAgent().reviewAndValidate(taskId, repoPath, commands[commands.length - 1], diff);
+      const review = await new ReviewerAgent().reviewAndValidate(taskId, repoPath, commands[commands.length - 1], diff, { title: task.title, instruction: task.completeInstruction, planSummary: planner.outputSummary });
       if (!review.passed) {
-        await tryEmitTaskEvent(prisma, { taskId, type: 'review_failed', actor: 'runner', actorType: 'worker', attemptId: attempt.id, correlationId: jobId, payload: { feedback: review.feedback.slice(0, 1000), repairCycle } });
+        // Split reviews (P12): report exactly which lens(es) failed.
+        const failedLenses = Object.entries(review.lenses).filter(([, verdict]) => verdict === false).map(([lens]) => lens);
+        await tryEmitTaskEvent(prisma, { taskId, type: 'review_failed', actor: 'runner', actorType: 'worker', attemptId: attempt.id, correlationId: jobId, payload: { feedback: review.feedback.slice(0, 1000), failedLenses, repairCycle } });
         if (repairCycle >= repairBudget) throw new ReviewRejectedError(review.feedback);
         repairCycle += 1;
         await transition('REPAIRING', { reason: `safety review requested changes; repair cycle ${repairCycle}/${repairBudget}`, legacyStatus: 'testing', metadata: { stage: 'review', repairCycle, repairBudget } });
