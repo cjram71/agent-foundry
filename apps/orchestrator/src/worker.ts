@@ -5,7 +5,7 @@ import * as os from 'os';
 import { createHash } from 'crypto';
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
-import { Worker } from 'bullmq';
+import { Worker, UnrecoverableError } from 'bullmq';
 import IORedis from 'ioredis';
 import { GoogleGenAI } from '@google/genai';
 import { PrismaClient } from '@prisma/client';
@@ -99,10 +99,17 @@ function validatePlan(value: unknown, allowedAgents: ReadonlySet<string>, commit
 }
 
 const worker = new Worker('foundry-tasks', async (job) => {
-  if (job.data.action !== 'plan') throw new Error(`Unsupported action: ${String(job.data.action)}`);
+  if (job.data.action !== 'plan') throw new UnrecoverableError(`Unsupported action: ${String(job.data.action)}`);
   const task = await prisma.task.findUnique({ where: { id: job.data.taskId }, include: { project: true } });
-  if (!task) throw new Error(`Task ${job.data.taskId} not found`);
-  if (!task.project.authorisedStatus) throw new Error('Project is not authorised');
+  if (!task) throw new UnrecoverableError(`Task ${job.data.taskId} not found`);
+  // Duplicate/redelivery tolerance: only PLANNING tasks hold unconsumed plan
+  // work. Anything else means a prior delivery already handled it (or a
+  // human moved it on); skipping is a clean completion, not an error.
+  if (task.state !== 'PLANNING') {
+    await prisma.auditEvent.create({ data: { actor: 'orchestrator', action: 'queue.duplicate_plan_skipped', target: task.id, result: 'success', metadata: { jobId: job.id, state: task.state } } }).catch(() => {});
+    return { success: true, skipped: true, state: task.state };
+  }
+  if (!task.project.authorisedStatus) throw new UnrecoverableError('Project is not authorised');
   await tryEmitTaskEvent(prisma, { taskId: task.id, type: 'planning_started', actor: 'orchestrator', actorType: 'worker', correlationId: job.id });
   const managerEvaluation = task.title.startsWith('AI Project Manager Evaluation');
   const maxAgents = managerEvaluation ? 15 : 5;
@@ -133,23 +140,40 @@ const worker = new Worker('foundry-tasks', async (job) => {
     return { success: true };
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 2000) : 'Unknown planning error';
+    // Retry semantics (docs/QUEUE.md): transient planner failures leave the
+    // task in PLANNING so BullMQ can retry the SAME job; only the final
+    // attempt moves it to FAILED and emits task_failed.
+    const finalAttempt = job.attemptsMade >= Math.max((job.opts.attempts ?? 1) - 1, 0);
     await prisma.$transaction(async tx => {
       await tx.agentRun.create({ data: { taskId: task.id, provider: 'google', model: 'gemini-3.6-flash', role: 'planner', promptHash: createHash('sha256').update(prompt).digest('hex'), status: 'failed', errorInfo: message } });
-      const latest = await tx.task.findUnique({ where: { id: task.id }, select: { status: true } });
+      const latest = await tx.task.findUnique({ where: { id: task.id }, select: { status: true, state: true } });
       const preserveSuccessfulPlan = latest?.status === 'awaiting_plan_approval';
-      if (!preserveSuccessfulPlan) {
+      if (!preserveSuccessfulPlan && finalAttempt && latest?.state === 'PLANNING') {
         await transitionTask(tx, {
           taskId: task.id, to: 'FAILED', actor: 'orchestrator', actorType: 'worker',
           reason: message.slice(0, 500), legacyStatus: 'failed', correlationId: job.id,
         });
         await emitTaskEvent(tx, { taskId: task.id, type: 'task_failed', actor: 'orchestrator', actorType: 'worker', correlationId: job.id, payload: { stage: 'planning', error: message.slice(0, 1000) } });
       }
-      await tx.auditEvent.create({ data: { actor: 'orchestrator', action: preserveSuccessfulPlan ? 'task.duplicate_plan_failed_ignored' : 'task.plan_generated', target: task.id, result: 'failed', metadata: { catalogCommit: catalog.commit } } });
+      await tx.auditEvent.create({ data: { actor: 'orchestrator', action: preserveSuccessfulPlan ? 'task.duplicate_plan_failed_ignored' : 'task.plan_generated', target: task.id, result: 'failed', metadata: { catalogCommit: catalog.commit, attempt: job.attemptsMade + 1, willRetry: !finalAttempt && !preserveSuccessfulPlan } } });
     });
     throw error;
   }
 }, { connection, concurrency: 2 });
 
 worker.on('completed', job => console.log(`[Job ${job?.id}] Plan completed with agent-catalog selection.`));
-worker.on('failed', (job, err) => console.error(`[Job ${job?.id}] Failed:`, err instanceof Error ? err.message : 'unknown'));
+worker.on('failed', (job, err) => {
+  console.error(`[Job ${job?.id}] Failed:`, err instanceof Error ? err.message : 'unknown');
+  // Dead-letter surface: when BullMQ has no retries left, record exactly one
+  // queue-level marker so an operator can tell "will retry" from "dead".
+  if (job && job.attemptsMade >= (job.opts.attempts ?? 1)) {
+    prisma.auditEvent.create({
+      data: {
+        actor: 'orchestrator', action: 'queue.job_exhausted', target: typeof job.data?.taskId === 'string' ? job.data.taskId : 'unknown',
+        result: 'failed',
+        metadata: { jobId: job.id, queue: 'foundry-tasks', attempts: job.attemptsMade, error: (err instanceof Error ? err.message : 'unknown').slice(0, 500) },
+      },
+    }).catch(() => {});
+  }
+});
 console.log('Orchestrator listening with mandatory 500-AI-Agents catalog selection.');

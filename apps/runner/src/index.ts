@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs/promises';
 import { spawn } from 'child_process';
 import { createHash } from 'crypto';
-import { Worker } from 'bullmq';
+import { Worker, UnrecoverableError } from 'bullmq';
 import IORedis from 'ioredis';
 import { GoogleGenAI } from '@google/genai';
 import { PrismaClient } from '@prisma/client';
@@ -135,11 +135,19 @@ async function generateCoderResponse(prompt: string) {
 }
 async function executeTask(taskId: string, jobId: string | undefined) {
   const task = await prisma.task.findUnique({ where: { id: taskId }, include: { project: true, approvals: true, agentRuns: { orderBy: { createdAt: 'desc' } } } });
-  if (!task) throw new Error(`Task ${taskId} not found`);
-  if (!task.project.authorisedStatus) throw new Error('Project is not authorised');
-  if (task.status !== 'queued' || !task.approvals.some(a => a.approvalType === 'plan' && a.decision === 'approved')) throw new Error('Task is not approved and queued');
+  if (!task) throw new UnrecoverableError(`Task ${taskId} not found`);
+  if (!task.project.authorisedStatus) throw new UnrecoverableError('Project is not authorised');
+  // Duplicate/redelivery tolerance: only QUEUED tasks hold unconsumed
+  // execution work. Any other state means a prior delivery is processing or
+  // a human moved the task on — clean completion, never an error (P5 made
+  // mid-run re-entry dangerous: it would have failed a healthy attempt).
+  if (task.state !== 'QUEUED') {
+    await prisma.auditEvent.create({ data: { actor: 'runner', action: 'queue.duplicate_execution_skipped', target: task.id, result: 'success', metadata: { jobId, state: task.state } } }).catch(() => {});
+    return { skipped: true, state: task.state };
+  }
+  if (!task.approvals.some(a => a.approvalType === 'plan' && a.decision === 'approved')) throw new UnrecoverableError('Task is not approved and queued');
   const planner = task.agentRuns.find(run => run.role === 'planner' && run.status === 'success' && run.outputSummary);
-  if (!planner?.outputSummary) throw new Error('Approved task has no valid planner output');
+  if (!planner?.outputSummary) throw new UnrecoverableError('Approved task has no valid planner output');
   const allowed = new Set((await prisma.project.findMany({ where: { authorisedStatus: true }, select: { githubOwner: true, githubRepo: true } })).map(project => `${project.githubOwner}/${project.githubRepo}`));
   const github = new GitHubClient(allowed);
   const repository = { owner: task.project.githubOwner, repo: task.project.githubRepo };
@@ -246,10 +254,22 @@ async function executeTask(taskId: string, jobId: string | undefined) {
 }
 
 const worker = new Worker('foundry-execution', async job => {
-  if (job.data.action !== 'execute' || typeof job.data.taskId !== 'string') throw new Error('Unsupported execution job');
+  if (job.data.action !== 'execute' || typeof job.data.taskId !== 'string') throw new UnrecoverableError('Unsupported execution job');
   return executeTask(job.data.taskId, job.id);
 }, { connection, concurrency: 1 });
 
 worker.on('completed', job => console.log(`[Execution ${job?.id}] Draft PR ready.`));
-worker.on('failed', (job, error) => console.error(`[Execution ${job?.id}] Failed:`, error.message));
+worker.on('failed', (job, error) => {
+  console.error(`[Execution ${job?.id}] Failed:`, error.message);
+  // Dead-letter surface: no retries left -> exactly one queue-level marker.
+  if (job && job.attemptsMade >= (job.opts.attempts ?? 1)) {
+    prisma.auditEvent.create({
+      data: {
+        actor: 'runner', action: 'queue.job_exhausted', target: typeof job.data?.taskId === 'string' ? job.data.taskId : 'unknown',
+        result: 'failed',
+        metadata: { jobId: job.id, queue: 'foundry-execution', attempts: job.attemptsMade, error: (error instanceof Error ? error.message : 'unknown').slice(0, 500) },
+      },
+    }).catch(() => {});
+  }
+});
 console.log('Runner listening on foundry-execution; automatic merge is disabled.');

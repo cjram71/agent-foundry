@@ -38,8 +38,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (current.status !== 'draft' && current.status !== 'failed') return NextResponse.json({ error: `Task is already ${current.status.replaceAll('_', ' ')}.` }, { status: 409 });
     await transitionTask(prisma, { taskId: id, to: 'PLANNING', actor: auth.session!.userId, actorType: 'human', reason: 'plan requested', legacyStatus: 'planning', extraTaskData: { startedAt: current.startedAt || new Date() } });
     try {
-      const job = await enqueuePlan(id);
-      await prisma.auditEvent.create({ data: { actor: auth.session!.userId, action: 'task.plan_queued', target: id, result: 'success', metadata: { jobId: job.id } } });
+      const { job, deduplicated } = await enqueuePlan(id);
+      await prisma.auditEvent.create({ data: { actor: auth.session!.userId, action: 'task.plan_queued', target: id, result: 'success', metadata: { jobId: job.id, deduplicated } } });
       return NextResponse.json({ message: 'Planning started. This page will update automatically.' });
     } catch (error) {
       await transitionTask(prisma, { taskId: id, to: current.status === 'failed' ? 'FAILED' : 'DRAFT', actor: auth.session!.userId, actorType: 'human', reason: 'planning queue unavailable; returning to prior state', legacyStatus: current.status });
@@ -110,9 +110,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
     if (approved) {
       try {
-        const job = await enqueueExecution(id);
-        await prisma.auditEvent.create({ data: { actor: auth.session!.userId, action: 'task.execution_queued', target: id, result: 'success', metadata: { jobId: job.id } } });
-        await emitTaskEvent(prisma, { taskId: id, type: 'task_queued', actor: auth.session!.userId, actorType: 'human', correlationId: job.id ?? null, payload: { jobId: job.id ?? null } });
+        const { job, deduplicated } = await enqueueExecution(id);
+        await prisma.auditEvent.create({ data: { actor: auth.session!.userId, action: 'task.execution_queued', target: id, result: 'success', metadata: { jobId: job.id, deduplicated } } });
+        await emitTaskEvent(prisma, { taskId: id, type: 'task_queued', actor: auth.session!.userId, actorType: 'human', correlationId: job.id ?? null, payload: { jobId: job.id ?? null, deduplicated } });
       } catch {
         await prisma.$transaction(async tx => {
           await transitionTask(tx, { taskId: id, to: 'AWAITING_APPROVAL', actor: auth.session!.userId, actorType: 'human', reason: 'execution queue unavailable; approval rolled back', legacyStatus: 'awaiting_plan_approval', extraTaskData: { assignedAgent: current.assignedAgent } });
