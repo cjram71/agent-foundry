@@ -1,0 +1,90 @@
+# PENDING OPERATOR APPLICATION — proposed permanent CI gate.
+#
+# This job could not be committed to .github/workflows/ci.yml because the
+# automation token used for the Phase P3 push does not hold the `workflows`
+# permission (GitHub refuses App-authored workflow changes). Until the owner
+# merges the following into .github/workflows/ci.yml (adding
+# `workflow_dispatch:` to the `on:` block is also recommended), migration
+# parity is verified locally per docs/MIGRATION-RESCUE.md.
+#
+# Intended placement: as a second job alongside `build-and-test`.
+
+  migrate-scratch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: foundry
+          POSTGRES_PASSWORD: foundry
+          POSTGRES_DB: foundry
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U foundry -d foundry"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Apply migrations to scratch PostgreSQL
+        run: npx prisma migrate deploy --schema packages/database/prisma/schema.prisma
+        env:
+          DATABASE_URL: postgresql://foundry:foundry@localhost:5432/foundry
+      - name: Schema-parity check (migrate diff must be empty)
+        run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel packages/database/prisma/schema.prisma --exit-code
+        env:
+          DATABASE_URL: postgresql://foundry:foundry@localhost:5432/foundry
+      - name: Engine-independent parity assertions
+        run: PGPASSWORD=foundry psql -h localhost -U foundry -d foundry -v ON_ERROR_STOP=1 -f scripts/verify-schema-parity.sql
+      - name: Reconciliation SQL is valid and idempotent on a migrated database
+        run: |
+          PGPASSWORD=foundry psql -h localhost -U foundry -d foundry -v ON_ERROR_STOP=1 -f scripts/reconcile-prisma-drift.sql
+          PGPASSWORD=foundry psql -h localhost -U foundry -d foundry -v ON_ERROR_STOP=1 -f scripts/reconcile-prisma-drift.sql
+
+      # ---- P4 additions: dashboard verification ------------------------------
+      - run: npx prisma generate --schema packages/database/prisma/schema.prisma
+        env:
+          DATABASE_URL: postgresql://foundry:foundry@localhost:5432/foundry
+      # ---- P5 additions: state-machine package (dashboard depends on it) ----
+      - name: State machine unit tests (transition table, concurrency, audit)
+        run: npm test --workspace=packages/state-machine
+      # ---- P6 additions: event + policy + manager packages (dashboard depends on them) ----
+      - name: Policy engine unit tests (risk rules, ceilings, prohibited floor)
+        run: npm test --workspace=packages/policy
+      - name: Build workspace packages in dependency order
+        run: npm run build
+      - name: Manager unit tests (parse bounds, draft screening)
+        run: npm test --workspace=packages/manager
+      - name: Dashboard typecheck
+        run: npm run typecheck --workspace=apps/dashboard
+      - name: Dashboard unit tests
+        run: npm test --workspace=apps/dashboard
+      - name: Dashboard auth integration tests against scratch PostgreSQL
+        run: npm test --workspace=apps/dashboard
+        env:
+          TEST_DATABASE_URL: postgresql://foundry:foundry@localhost:5432/foundry
+      - name: Dashboard production build (fails closed on bad config)
+        run: npm run build --workspace=apps/dashboard
+        env:
+          JWT_SECRET: ci-only-placeholder-not-a-real-secret-0123456789abcdef
+          DATABASE_URL: postgresql://foundry:foundry@localhost:5432/foundry
+          REDIS_PASSWORD: foundry
+          APP_URL: http://127.0.0.1:3000
+      # ---- P9 additions: orchestrator catalog + plan validation ---------
+      - name: Orchestrator catalog & plan validation unit tests
+        run: npm test --workspace=apps/orchestrator
+      # ---- P13 additions: github client idempotency ----------------------
+      - name: GitHub client unit tests (idempotent PR creation)
+        run: npm test --workspace=packages/github
+      # ---- P14 additions: cost + ops primitives --------------------------
+      - name: Cost primitives unit tests (spend brake)
+        run: npm test --workspace=packages/cost
+      - name: Ops primitives unit tests (stop, sweeper)
+        run: npm test --workspace=packages/ops

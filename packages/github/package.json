@@ -4,6 +4,6 @@
   "private": true,
   "main": "dist/client.js",
   "types": "dist/client.d.ts",
-  "scripts": { "build": "tsc" },
+  "scripts": { "build": "tsc", "test": "npm run build && node --test dist/client.test.js" },
   "devDependencies": { "typescript": "^5.0.0", "@types/node": "^20.0.0" }
 }

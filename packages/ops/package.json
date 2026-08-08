@@ -1,0 +1,13 @@
+{
+  "name": "@foundry/ops",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Operational primitives for Agent Foundry workers (P14): emergency-stop flag, stop supervisor, job deferral, wedge detection.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node --test dist/index.test.js"
+  },
+  "devDependencies": { "typescript": "^5.0.0", "@types/node": "^20.0.0" }
+}

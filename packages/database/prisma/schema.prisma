@@ -31,6 +31,30 @@ enum TaskStatus {
   completed
 }
 
+enum TaskState {
+  DRAFT
+  QUEUED
+  PLANNING
+  RUNNING
+  VALIDATING
+  REVIEWING
+  REPAIRING
+  PR_CREATED
+  PREVIEW_PENDING
+  PREVIEW_READY
+  AWAITING_APPROVAL
+  CHANGES_REQUESTED
+  HUMAN_INPUT_REQUIRED
+  APPROVED
+  REJECTED
+  SECURITY_BLOCKED
+  INFRASTRUCTURE_FAILED
+  CODE_FAILED
+  FAILED
+  CANCELLED
+  COMPLETED
+}
+
 model User {
   id            String    @id @default(uuid())
   email         String    @unique
@@ -38,6 +62,22 @@ model User {
   role          Role      @default(OPERATOR)
   createdAt     DateTime  @default(now())
   lastLoginAt   DateTime?
+  sessions      Session[]
+}
+
+model Session {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime
+  lastSeenAt  DateTime  @default(now())
+  ip          String?
+  userAgent   String?
+  revokedAt   DateTime?
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model Project {
@@ -54,6 +94,23 @@ model Project {
   spendingLimit      Float     @default(50.00)
   createdAt          DateTime  @default(now())
   tasks              Task[]
+  policies           ProjectPolicy[]
+}
+
+model ProjectPolicy {
+  id                   String   @id @default(uuid())
+  projectId            String
+  project              Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  version              Int
+  active               Boolean  @default(false)
+  maxTaskRisk          String   @default("high") // 'low', 'medium', 'high' — prohibited is never a settable ceiling
+  requirePlanApproval  Boolean  @default(true)
+  requireMergeApproval Boolean  @default(true)
+  createdBy            String
+  createdAt            DateTime @default(now())
+
+  @@unique([projectId, version])
+  @@index([projectId, active])
 }
 
 model Task {
@@ -63,6 +120,7 @@ model Task {
   title              String
   completeInstruction String
   status             TaskStatus   @default(draft)
+  state              TaskState    @default(DRAFT)
   riskLevel          String       @default("medium")
   assignedAgent      String?
   branchName         String?
@@ -70,11 +128,102 @@ model Task {
   previewUrl         String?
   tokenUsage         Int          @default(0)
   estimatedCost      Float        @default(0.0)
+  currentAttemptId   String?
   createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
   startedAt          DateTime?
   completedAt        DateTime?
   agentRuns          AgentRun[]
   approvals          Approval[]
+  attempts           TaskAttempt[]
+  stateTransitions   TaskStateTransition[]
+  events             TaskEvent[]
+}
+
+model TaskAttempt {
+  id             String    @id @default(uuid())
+  taskId         String
+  task           Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  attemptNumber  Int
+  status         String    @default("running")
+  correlationId  String
+  workspacePath  String?
+  branchName     String?
+  commitSha      String?
+  outcomeSummary String?
+  startedAt      DateTime  @default(now())
+  endedAt        DateTime?
+  transitions    TaskStateTransition[]
+  events         TaskEvent[]
+
+  @@unique([taskId, attemptNumber])
+  @@index([taskId])
+}
+
+model TaskStateTransition {
+  id            String       @id @default(uuid())
+  taskId        String
+  task          Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  attemptId     String?
+  attempt       TaskAttempt? @relation(fields: [attemptId], references: [id], onDelete: SetNull)
+  fromState     TaskState
+  toState       TaskState
+  actor         String
+  actorType     String       @default("system")
+  reason        String?
+  correlationId String?
+  metadata      Json?
+  createdAt     DateTime    @default(now())
+
+  @@index([taskId])
+  @@index([correlationId])
+  @@index([createdAt])
+}
+
+enum TaskEventType {
+  task_created
+  task_queued
+  planning_started
+  plan_generated
+  plan_approval_requested
+  plan_approved
+  plan_rejected
+  execution_started
+  code_generated
+  validation_started
+  validation_passed
+  validation_failed
+  review_started
+  review_passed
+  review_failed
+  draft_pr_opened
+  preview_ready
+  final_approval_requested
+  final_approved
+  final_rejected
+  task_completed
+  task_failed
+  task_cancelled
+  task_state_changed
+}
+
+model TaskEvent {
+  id            String        @id @default(uuid())
+  taskId        String
+  task          Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  attemptId     String?
+  attempt       TaskAttempt?  @relation(fields: [attemptId], references: [id], onDelete: SetNull)
+  type          TaskEventType
+  actor         String
+  actorType     String        @default("system")
+  correlationId String?
+  payload       Json?
+  createdAt     DateTime      @default(now())
+
+  @@index([taskId])
+  @@index([type])
+  @@index([correlationId])
+  @@index([createdAt])
 }
 
 model AgentRun {

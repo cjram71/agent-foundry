@@ -1,0 +1,19 @@
+{
+  "name": "@foundry/manager",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Deterministic Manager for Agent Foundry: parses AI Project Manager evaluations (untrusted data) and converts them into policy-screened DRAFT task descriptors. No AI decisions; no execution.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "node --experimental-strip-types --experimental-loader ./test/ts-resolve-loader.mjs --test --test-force-exit \"src/__tests__/*.test.ts\""
+  },
+  "dependencies": {
+    "@foundry/policy": "0.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0"
+  }
+}

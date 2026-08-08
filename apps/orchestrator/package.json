@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "start": "node dist/worker.js",
-    "build": "tsc"
+    "build": "tsc",
+    "test": "npm run build && node --test dist/catalog.test.js dist/plan.test.js"
   },
   "devDependencies": {
     "@types/node": "^26.1.2",
@@ -12,6 +13,9 @@
     "typescript": "^7.0.2"
   },
   "dependencies": {
+    "@foundry/cost": "0.1.0",
+    "@foundry/ops": "0.1.0",
+    "@foundry/state-machine": "0.1.0",
     "@google/genai": "^2.15.0"
   }
 }

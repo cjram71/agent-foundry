@@ -1,9 +1,38 @@
 {
+  // BUILD ORDER LAW: these projects are not composite, so tsc --build
+  // compiles them in this exact list order and a project may only import
+  // @foundry/* packages listed BEFORE it. Violating this only fails cold
+  // builds (CI / fresh checkout); warm builds mask it behind existing dist
+  // output. Discovered the hard way: P14's alphabetization moved manager
+  // ahead of its dependency policy (see P16 history / CI run 31257624437).
   "files": [],
   "references": [
-    { "path": "./packages/database" },
-    { "path": "./packages/github" },
-    { "path": "./apps/orchestrator" },
-    { "path": "./apps/runner" }
+    {
+      "path": "./packages/cost"
+    },
+    {
+      "path": "./packages/database"
+    },
+    {
+      "path": "./packages/github"
+    },
+    {
+      "path": "./packages/ops"
+    },
+    {
+      "path": "./packages/policy"
+    },
+    {
+      "path": "./packages/manager"
+    },
+    {
+      "path": "./packages/state-machine"
+    },
+    {
+      "path": "./apps/orchestrator"
+    },
+    {
+      "path": "./apps/runner"
+    }
   ]
 }
