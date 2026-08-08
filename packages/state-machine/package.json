@@ -1,0 +1,16 @@
+{
+  "name": "@foundry/state-machine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Deterministic, enforced task state machine for Agent Foundry (states, transitions, transactional transition writer with optimistic concurrency).",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "node --experimental-strip-types --experimental-loader ./test/ts-resolve-loader.mjs --test --test-force-exit \"src/__tests__/*.test.ts\""
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0"
+  }
+}

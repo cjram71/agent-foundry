@@ -12,6 +12,7 @@
     "typescript": "^7.0.2"
   },
   "dependencies": {
+    "@foundry/state-machine": "0.1.0",
     "@google/genai": "^2.15.0"
   }
 }

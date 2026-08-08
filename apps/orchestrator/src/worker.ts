@@ -9,6 +9,7 @@ import { Worker } from 'bullmq';
 import IORedis from 'ioredis';
 import { GoogleGenAI } from '@google/genai';
 import { PrismaClient } from '@prisma/client';
+import { transitionTask } from '@foundry/state-machine';
 
 const prisma = new PrismaClient();
 const connection = new IORedis({ host: '127.0.0.1', port: 6379, password: process.env.REDIS_PASSWORD || undefined, maxRetriesPerRequest: null });
@@ -116,7 +117,13 @@ const worker = new Worker('foundry-tasks', async (job) => {
     const tokens = response.totalTokens;
     await prisma.$transaction(async tx => {
       await tx.agentRun.create({ data: { taskId: task.id, provider: response.provider, model: response.model, role: 'planner', promptHash: createHash('sha256').update(prompt).digest('hex'), status: 'success', tokenUsage: tokens, outputSummary: output } });
-      await tx.task.update({ where: { id: task.id }, data: { status: 'awaiting_plan_approval', tokenUsage: { increment: tokens } } });
+      await transitionTask(tx, {
+        taskId: task.id, to: 'AWAITING_APPROVAL', actor: 'orchestrator', actorType: 'worker',
+        reason: 'plan generated and validated', legacyStatus: 'awaiting_plan_approval',
+        correlationId: job.id,
+        metadata: { catalogCommit: catalog.commit, selectedAgents: plan.selectedAgents.map(agent => agent.catalogId) },
+        extraTaskData: { tokenUsage: { increment: tokens } },
+      });
       await tx.approval.create({ data: { taskId: task.id, approvalType: 'plan' } });
       await tx.auditEvent.create({ data: { actor: 'orchestrator', action: 'task.plan_generated', target: task.id, result: 'success', metadata: { jobId: job.id, tokens, catalogCommit: catalog.commit, selectedAgents: plan.selectedAgents.map(agent => agent.catalogId) } } });
     });
@@ -127,7 +134,12 @@ const worker = new Worker('foundry-tasks', async (job) => {
       await tx.agentRun.create({ data: { taskId: task.id, provider: 'google', model: 'gemini-3.6-flash', role: 'planner', promptHash: createHash('sha256').update(prompt).digest('hex'), status: 'failed', errorInfo: message } });
       const latest = await tx.task.findUnique({ where: { id: task.id }, select: { status: true } });
       const preserveSuccessfulPlan = latest?.status === 'awaiting_plan_approval';
-      if (!preserveSuccessfulPlan) await tx.task.update({ where: { id: task.id }, data: { status: 'failed' } });
+      if (!preserveSuccessfulPlan) {
+        await transitionTask(tx, {
+          taskId: task.id, to: 'FAILED', actor: 'orchestrator', actorType: 'worker',
+          reason: message.slice(0, 500), legacyStatus: 'failed', correlationId: job.id,
+        });
+      }
       await tx.auditEvent.create({ data: { actor: 'orchestrator', action: preserveSuccessfulPlan ? 'task.duplicate_plan_failed_ignored' : 'task.plan_generated', target: task.id, result: 'failed', metadata: { catalogCommit: catalog.commit } } });
     });
     throw error;

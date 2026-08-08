@@ -1,9 +1,20 @@
 {
   "files": [],
   "references": [
-    { "path": "./packages/database" },
-    { "path": "./packages/github" },
-    { "path": "./apps/orchestrator" },
-    { "path": "./apps/runner" }
+    {
+      "path": "./packages/database"
+    },
+    {
+      "path": "./packages/github"
+    },
+    {
+      "path": "./packages/state-machine"
+    },
+    {
+      "path": "./apps/orchestrator"
+    },
+    {
+      "path": "./apps/runner"
+    }
   ]
 }

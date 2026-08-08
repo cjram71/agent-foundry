@@ -52,6 +52,11 @@
       - run: npx prisma generate --schema packages/database/prisma/schema.prisma
         env:
           DATABASE_URL: postgresql://foundry:foundry@localhost:5432/foundry
+      # ---- P5 additions: state-machine package (dashboard depends on it) ----
+      - name: State machine unit tests (transition table, concurrency, audit)
+        run: npm test --workspace=packages/state-machine
+      - name: Build workspace packages in dependency order
+        run: npm run build
       - name: Dashboard typecheck
         run: npm run typecheck --workspace=apps/dashboard
       - name: Dashboard unit tests

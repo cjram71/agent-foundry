@@ -10,6 +10,7 @@
     "test": "node --experimental-strip-types --experimental-loader ./src/lib/__tests__/ts-resolve-loader.mjs --test --test-force-exit \"src/lib/__tests__/*.test.ts\" \"src/app/api/__tests__/*.test.ts\""
   },
   "dependencies": {
+    "@foundry/state-machine": "0.1.0",
     "@prisma/client": "^6.19.3",
     "bcrypt": "^6.0.0",
     "bullmq": "^6.0.6",

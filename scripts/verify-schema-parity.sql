@@ -31,13 +31,23 @@ BEGIN
     RAISE EXCEPTION 'TaskStatus enum mismatch: %', labels;
   END IF;
 
+  SELECT array_agg(enumlabel ORDER BY enumsortorder) INTO labels
+    FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid WHERE t.typname = 'TaskState';
+  IF labels IS DISTINCT FROM ARRAY['DRAFT','QUEUED','PLANNING','RUNNING','VALIDATING','REVIEWING','REPAIRING',
+      'PR_CREATED','PREVIEW_PENDING','PREVIEW_READY','AWAITING_APPROVAL','CHANGES_REQUESTED','HUMAN_INPUT_REQUIRED',
+      'APPROVED','REJECTED','SECURITY_BLOCKED','INFRASTRUCTURE_FAILED','CODE_FAILED','FAILED','CANCELLED','COMPLETED'] THEN
+    RAISE EXCEPTION 'TaskState enum mismatch: %', labels;
+  END IF;
+
   -- 2. Exact column sets per table (name, non-null, type)
   FOR c IN
     SELECT * FROM (VALUES
       ('User',       ARRAY['id','email','passwordHash','role','createdAt','lastLoginAt']),
       ('Session',    ARRAY['id','userId','createdAt','expiresAt','lastSeenAt','ip','userAgent','revokedAt']),
       ('Project',    ARRAY['id','name','githubOwner','githubRepo','defaultBranch','projectType','productionUrl','vercelProjectRef','vercelTeamRef','authorisedStatus','spendingLimit','createdAt']),
-      ('Task',       ARRAY['id','projectId','title','completeInstruction','status','riskLevel','assignedAgent','branchName','pullRequestUrl','previewUrl','tokenUsage','estimatedCost','createdAt','startedAt','completedAt']),
+      ('Task',       ARRAY['id','projectId','title','completeInstruction','status','state','riskLevel','assignedAgent','branchName','pullRequestUrl','previewUrl','tokenUsage','estimatedCost','currentAttemptId','createdAt','updatedAt','startedAt','completedAt']),
+      ('TaskAttempt', ARRAY['id','taskId','attemptNumber','status','correlationId','workspacePath','branchName','commitSha','outcomeSummary','startedAt','endedAt']),
+      ('TaskStateTransition', ARRAY['id','taskId','attemptId','fromState','toState','actor','actorType','reason','correlationId','metadata','createdAt']),
       ('AgentRun',   ARRAY['id','taskId','provider','model','role','promptHash','status','tokenUsage','outputSummary','errorInfo','createdAt']),
       ('Approval',   ARRAY['id','taskId','approvalType','requestedAt','approvedBy','approvedAt','decision','comments']),
       ('AuditEvent', ARRAY['id','actor','action','target','result','metadata','timestamp'])
@@ -79,6 +89,26 @@ BEGIN
     AND udt_name='TaskStatus' AND column_default LIKE '%draft%';
   IF NOT FOUND THEN RAISE EXCEPTION 'Task.status must be TaskStatus enum DEFAULT draft'; END IF;
 
+  PERFORM 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Task' AND column_name='state'
+    AND udt_name='TaskState' AND is_nullable='NO' AND column_default LIKE '%DRAFT%';
+  IF NOT FOUND THEN RAISE EXCEPTION 'Task.state must be TaskState enum NOT NULL DEFAULT DRAFT'; END IF;
+
+  PERFORM 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Task' AND column_name='updatedAt'
+    AND is_nullable='NO';
+  IF NOT FOUND THEN RAISE EXCEPTION 'Task.updatedAt must be NOT NULL'; END IF;
+
+  PERFORM 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Task' AND column_name='currentAttemptId'
+    AND is_nullable='YES';
+  IF NOT FOUND THEN RAISE EXCEPTION 'Task.currentAttemptId must be nullable'; END IF;
+
+  PERFORM 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='TaskStateTransition' AND column_name='metadata'
+    AND data_type='jsonb' AND is_nullable='YES';
+  IF NOT FOUND THEN RAISE EXCEPTION 'TaskStateTransition.metadata must be nullable jsonb'; END IF;
+
+  PERFORM 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='TaskStateTransition' AND column_name='attemptId'
+    AND is_nullable='YES';
+  IF NOT FOUND THEN RAISE EXCEPTION 'TaskStateTransition.attemptId must be nullable (SetNull FK)'; END IF;
+
   PERFORM 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Task' AND column_name='riskLevel'
     AND column_default LIKE '%medium%';
   IF NOT FOUND THEN RAISE EXCEPTION 'Task.riskLevel must DEFAULT medium'; END IF;
@@ -105,11 +135,23 @@ BEGIN
   PERFORM 1 FROM pg_indexes WHERE schemaname='public' AND tablename='Session' AND indexname='Session_expiresAt_idx';
   IF NOT FOUND THEN RAISE EXCEPTION 'Index Session_expiresAt_idx missing'; END IF;
 
+  PERFORM 1 FROM pg_indexes WHERE schemaname='public' AND tablename='TaskAttempt' AND indexname='TaskAttempt_taskId_attemptNumber_key'
+    AND indexdef ILIKE '%UNIQUE%';
+  IF NOT FOUND THEN RAISE EXCEPTION 'Unique index TaskAttempt_taskId_attemptNumber_key missing'; END IF;
+  PERFORM 1 FROM pg_indexes WHERE schemaname='public' AND tablename='TaskAttempt' AND indexname='TaskAttempt_taskId_idx';
+  IF NOT FOUND THEN RAISE EXCEPTION 'Index TaskAttempt_taskId_idx missing'; END IF;
+  PERFORM 1 FROM pg_indexes WHERE schemaname='public' AND tablename='TaskStateTransition' AND indexname='TaskStateTransition_taskId_idx';
+  IF NOT FOUND THEN RAISE EXCEPTION 'Index TaskStateTransition_taskId_idx missing'; END IF;
+  PERFORM 1 FROM pg_indexes WHERE schemaname='public' AND tablename='TaskStateTransition' AND indexname='TaskStateTransition_correlationId_idx';
+  IF NOT FOUND THEN RAISE EXCEPTION 'Index TaskStateTransition_correlationId_idx missing'; END IF;
+  PERFORM 1 FROM pg_indexes WHERE schemaname='public' AND tablename='TaskStateTransition' AND indexname='TaskStateTransition_createdAt_idx';
+  IF NOT FOUND THEN RAISE EXCEPTION 'Index TaskStateTransition_createdAt_idx missing'; END IF;
+
   -- 6. Foreign keys with CASCADE delete semantics (schema.prisma onDelete: Cascade)
   FOR c IN
     SELECT conname, conrelid::regclass::text AS child, confdeltype, confupdtype
       FROM pg_constraint
-      WHERE contype='f' AND conname IN ('Task_projectId_fkey','AgentRun_taskId_fkey','Approval_taskId_fkey','Session_userId_fkey')
+      WHERE contype='f' AND conname IN ('Task_projectId_fkey','AgentRun_taskId_fkey','Approval_taskId_fkey','Session_userId_fkey','TaskAttempt_taskId_fkey','TaskStateTransition_taskId_fkey')
   LOOP
     IF c.confdeltype <> 'c' OR c.confupdtype <> 'c' THEN
       RAISE EXCEPTION 'FK % on % must be ON DELETE CASCADE ON UPDATE CASCADE (got del=% up=%)',
@@ -117,9 +159,14 @@ BEGIN
     END IF;
   END LOOP;
   IF (SELECT COUNT(*) FROM pg_constraint WHERE contype='f' AND conname IN
-        ('Task_projectId_fkey','AgentRun_taskId_fkey','Approval_taskId_fkey','Session_userId_fkey')) <> 4 THEN
-    RAISE EXCEPTION 'Expected 4 CASCADE foreign keys to exist';
+        ('Task_projectId_fkey','AgentRun_taskId_fkey','Approval_taskId_fkey','Session_userId_fkey','TaskAttempt_taskId_fkey','TaskStateTransition_taskId_fkey')) <> 6 THEN
+    RAISE EXCEPTION 'Expected 6 CASCADE foreign keys to exist';
   END IF;
+
+  -- 6b. TaskStateTransition.attemptId must survive attempt deletion (onDelete: SetNull)
+  PERFORM 1 FROM pg_constraint WHERE contype='f' AND conname='TaskStateTransition_attemptId_fkey'
+    AND confdeltype='n' AND confupdtype='c';
+  IF NOT FOUND THEN RAISE EXCEPTION 'FK TaskStateTransition_attemptId_fkey must be ON DELETE SET NULL ON UPDATE CASCADE'; END IF;
 
   -- 7. Session columns the auth flow depends on
   PERFORM 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Session' AND column_name='expiresAt' AND is_nullable='NO';
