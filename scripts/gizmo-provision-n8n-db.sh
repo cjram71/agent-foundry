@@ -7,6 +7,9 @@ set -euo pipefail
 : "${N8N_DB_USER:?Set N8N_DB_USER}"
 : "${N8N_DB_PASSWORD:?Set N8N_DB_PASSWORD}"
 
+[[ "$N8N_DB_NAME" =~ ^[a-z_][a-z0-9_]{0,62}$ ]] || { echo 'Invalid N8N_DB_NAME' >&2; exit 2; }
+[[ "$N8N_DB_USER" =~ ^[a-z_][a-z0-9_]{0,62}$ ]] || { echo 'Invalid N8N_DB_USER' >&2; exit 2; }
+[[ "$N8N_DB_PASSWORD" =~ ^[A-Za-z0-9._~+-]{24,128}$ ]] || { echo 'N8N_DB_PASSWORD must be 24-128 safe random characters; hexadecimal/base64url-style recommended.' >&2; exit 2; }
 [[ "${GIZMO_ALLOW_DATABASE_CHANGES:-false}" == "true" ]] || {
   echo 'BLOCKED: set GIZMO_ALLOW_DATABASE_CHANGES=true only after backup/restore checkpoint approval.' >&2
   exit 2
@@ -14,14 +17,13 @@ set -euo pipefail
 
 docker ps --format '{{.Names}}' | grep -qx foundry_postgres || { echo 'foundry_postgres is not running' >&2; exit 1; }
 
-export PGPASSWORD="$POSTGRES_ADMIN_PASSWORD"
 SQL=$(cat <<SQL
 DO \$\$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${N8N_DB_USER}') THEN
-    CREATE ROLE ${N8N_DB_USER} LOGIN PASSWORD '${N8N_DB_PASSWORD//\'/\'\'}';
+    CREATE ROLE ${N8N_DB_USER} LOGIN PASSWORD '${N8N_DB_PASSWORD}';
   ELSE
-    ALTER ROLE ${N8N_DB_USER} WITH LOGIN PASSWORD '${N8N_DB_PASSWORD//\'/\'\'}';
+    ALTER ROLE ${N8N_DB_USER} WITH LOGIN PASSWORD '${N8N_DB_PASSWORD}';
   END IF;
 END
 \$\$;
