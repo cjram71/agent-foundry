@@ -66,7 +66,7 @@ JSON
 }
 
 phase00(){
-  "$REPO_ROOT/scripts/gizmo-preflight.sh"
+  bash "$REPO_ROOT/scripts/gizmo-preflight.sh"
   write_checkpoint phase-00-preflight "VPS preflight" false
 }
 phase01(){
@@ -89,7 +89,7 @@ phase03(){
 }
 phase04(){
   run_gate phase-03-n8n-db
-  "$REPO_ROOT/scripts/gizmo-validate-pins.sh"
+  bash "$REPO_ROOT/scripts/gizmo-validate-pins.sh"
   docker compose --env-file "$ENV_FILE" -f "$REPO_ROOT/infra/compose/gizmo-services.yml" config >/dev/null
   docker compose --env-file "$ENV_FILE" -f "$REPO_ROOT/infra/compose/gizmo-services.yml" pull
   docker compose --env-file "$ENV_FILE" -f "$REPO_ROOT/infra/compose/gizmo-services.yml" up -d
@@ -97,7 +97,7 @@ phase04(){
 }
 phase05(){
   run_gate phase-04-services
-  "$REPO_ROOT/scripts/gizmo-verify-services.sh"
+  bash "$REPO_ROOT/scripts/gizmo-verify-services.sh"
   write_checkpoint phase-05-service-verification "Auxiliary service verification" false
 }
 phase06(){
