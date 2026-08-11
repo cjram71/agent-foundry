@@ -1,0 +1,2 @@
+# Gizmo pull-based updater: fail-closed GitHub/main synchronization every 10 minutes.
+*/10 * * * * /home/cory/agent-foundry/scripts/gizmo-safe-update.sh
