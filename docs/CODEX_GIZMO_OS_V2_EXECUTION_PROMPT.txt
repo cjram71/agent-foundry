@@ -1,0 +1,77 @@
+GIZMO OS v2 — CODEX MASTER EXECUTION PROMPT
+
+You are the lead systems engineer responsible for evolving the existing deployed Agent Foundry into GIZMO OS v2.
+
+AUTHORITATIVE FILES
+1. docs/GIZMO_OS_MASTER_BUILD_v2.md
+2. docs/GIZMO_OS_V2_MIGRATION_ROADMAP.md
+3. docs/GIZMO_OS_V2_CHANGE_MATRIX.md
+4. docs/GIZMO_OS_V2_REPO_LAYOUT.txt
+5. current repository documentation and tests
+
+SOURCE BASELINE
+Repository: cjram71/agent-foundry
+Required accepted baseline: 8d6dcd4c856f9166a08927a3ffdb6807b4d5c9f1
+This is the post-PR #5 VPS sync baseline.
+
+PRIMARY RULE
+DO NOT rebuild this as a clean-slate FastAPI/agent-framework project. The existing TypeScript/Next.js/Prisma/PostgreSQL/Redis/BullMQ/Runner/Policy/State-Machine system is the production foundation.
+
+DO NOT:
+- delete working Agent Foundry subsystems,
+- replace PostgreSQL 16 just to use a newer major,
+- bypass human approval,
+- give agents root,
+- mount the Docker socket into validation sandboxes,
+- expose private admin services publicly,
+- commit secrets,
+- mass-rename packages while doing functional migration,
+- install optional infrastructure without a proven need,
+- create the new authoritative GitHub repository until the evolved build passes its acceptance gates.
+
+WORK STYLE
+- Work in small reviewable phases.
+- Before every phase state scope, risks, files/services affected, tests, rollback.
+- After every phase provide deterministic evidence.
+- If observed VPS reality conflicts with the written spec, stop that slice and report the conflict.
+- Preserve current human approval gates and policy/state-machine invariants.
+- Use dedicated branches/worktrees.
+- Do not push directly to main.
+
+BEGIN WITH PHASE 0 ONLY.
+
+Perform a READ-ONLY reconciliation of:
+A. current VPS worktree,
+B. GitHub branch/main,
+C. running PM2 processes,
+D. Docker/PostgreSQL/Redis/Ollama state,
+E. current backups,
+F. current network exposure,
+G. tests and CI.
+
+Confirm whether the VPS worktree is exactly at, ahead of, behind, or divergent from accepted Git state.
+
+Create:
+- docs/baselines/2026-08-11-vps-baseline.md
+- docs/baselines/2026-08-11-drift-report.md only if drift exists
+- docs/baselines/2026-08-11-phase1-plan.md
+
+Do not install, upgrade, stop, restart, migrate, delete, write production configuration, or change Git state during Phase 0.
+
+Report:
+1. exact Git SHA and worktree status,
+2. running service inventory,
+3. DB/Redis status,
+4. Docker inventory,
+5. PM2 status,
+6. host resources,
+7. firewall/listening ports,
+8. backup/restore verification,
+9. AI/Ollama configuration without secrets,
+10. CI/test coverage,
+11. material discrepancies,
+12. proposed Phase 1 changes,
+13. rollback per Phase 1 change,
+14. human approvals needed.
+
+STOP AFTER PHASE 0 until reviewed.

@@ -1,0 +1,102 @@
+GIZMO OS v2 TARGET REPOSITORY LAYOUT
+====================================
+
+gizmo-os/
+|
++-- .github/
+|   +-- CODEOWNERS
+|   +-- workflows/
+|       +-- ci.yml
+|       +-- integration.yml
+|       +-- security.yml
+|       +-- evals.yml
+|
++-- apps/
+|   +-- dashboard/                 [EXISTING: evolve into Operator Layer]
+|   +-- orchestrator/              [EXISTING: authoritative orchestration]
+|   +-- runner/                    [EXISTING: sandboxed execution]
+|
++-- packages/
+|   +-- cost/                      [EXISTING]
+|   +-- database/                  [EXISTING]
+|   +-- github/                    [EXISTING]
+|   +-- manager/                   [EXISTING]
+|   +-- ops/                       [EXISTING]
+|   +-- policy/                    [EXISTING]
+|   +-- state-machine/             [EXISTING]
+|   +-- mission/                   [NEW]
+|   +-- models/                    [NEW]
+|   +-- tools/                     [NEW]
+|   +-- memory/                    [NEW]
+|   +-- skills/                    [NEW]
+|   +-- workflows/                 [NEW]
+|   +-- evals/                     [NEW]
+|   +-- telemetry/                 [NEW]
+|   +-- business/                  [NEW]
+|
++-- infra/
+|   +-- compose/
+|   |   +-- core.yml
+|   |   +-- automation.yml
+|   |   +-- observability.yml
+|   +-- postgres/
+|   +-- litellm/
+|   +-- n8n/
+|   +-- grafana/
+|   +-- prometheus/
+|   +-- loki/
+|   +-- tempo/
+|   +-- alloy/
+|
++-- skills/
+|   +-- core/
+|   +-- research/
+|   +-- software/
+|   +-- business/
+|   +-- operations/
+|
++-- evals/
+|   +-- goldens/
+|   +-- redteam/
+|   +-- rubrics/
+|   +-- baselines/
+|   +-- results/
+|
++-- knowledge/
+|   +-- templates/                 [SOURCE ONLY; actual private vault outside repo]
+|
++-- docs/
+|   +-- existing Agent Foundry docs...
+|   +-- GIZMO_OS_MASTER_BUILD_v2.md
+|   +-- GIZMO_OS_V2_MIGRATION_ROADMAP.md
+|   +-- GIZMO_OS_V2_CHANGE_MATRIX.md
+|   +-- baselines/
+|
++-- scripts/
+|   +-- existing scripts...
+|   +-- gizmo-audit.sh
+|   +-- gizmo-preflight.sh
+|   +-- backup-all.sh
+|   +-- restore-drill.sh
+|
++-- AGENTS.md
++-- SECURITY.md
++-- README.md
++-- docker-compose.yml
++-- ecosystem.config.cjs
++-- package.json
++-- package-lock.json
++-- tsconfig.json
+
+RUNTIME DATA (NOT SOURCE REPO)
+==============================
+
+/srv/gizmo/
++-- workspaces/
++-- knowledge-vault/
++-- workflow-exports/
++-- backups/
++-- model-cache/
++-- logs/
++-- generated/
++-- secrets/              [0600/service-owned; never Git]

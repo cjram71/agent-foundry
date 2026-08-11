@@ -1,0 +1,18 @@
+# Gizmo OS v2 critical ownership
+* @cjram71
+
+# Security and control-plane paths
+/apps/orchestrator/ @cjram71
+/apps/runner/ @cjram71
+/apps/dashboard/src/lib/auth* @cjram71
+/apps/dashboard/src/proxy.ts @cjram71
+/packages/policy/ @cjram71
+/packages/state-machine/ @cjram71
+/packages/manager/ @cjram71
+/packages/database/ @cjram71
+/.github/workflows/ @cjram71
+/SECURITY.md @cjram71
+/AGENTS.md @cjram71
+/infra/ @cjram71
+/evals/ @cjram71
+/skills/ @cjram71
