@@ -10,7 +10,22 @@ if (!file) {
 }
 let workflow;
 try { workflow = JSON.parse(fs.readFileSync(file, 'utf8')); }
-catch (e) { console.error(`Invalid workflow JSON: ${e.message}`); process.exit(2); }
+catch (e) {
+  const report = {
+    source: path.resolve(file),
+    workflowName: path.basename(file),
+    nodes: 0,
+    nodeTypes: [],
+    credentials: [],
+    externalDomains: [],
+    findings: [{severity: 'high', kind: 'invalid-json', error: e.message}],
+    recommendation: 'REVIEW_REQUIRED',
+    activationAllowed: false,
+  };
+  console.log(JSON.stringify(report, null, 2));
+  console.error(`Invalid workflow JSON (quarantined for review): ${e.message}`);
+  process.exit(3);
+}
 
 const nodes = Array.isArray(workflow.nodes) ? workflow.nodes : [];
 const findings = [];
