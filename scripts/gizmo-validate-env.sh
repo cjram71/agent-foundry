@@ -10,9 +10,12 @@ for v in "${required[@]}"; do
   [[ "$value" != REPLACE* ]] || err "$v still contains a placeholder"
 done
 
-(( ${#N8N_ENCRYPTION_KEY:-0} >= 32 )) || err 'N8N_ENCRYPTION_KEY must be at least 32 characters'
-(( ${#LITELLM_MASTER_KEY:-0} >= 24 )) || err 'LITELLM_MASTER_KEY must be at least 24 characters'
-(( ${#GRAFANA_ADMIN_PASSWORD:-0} >= 16 )) || err 'GRAFANA_ADMIN_PASSWORD must be at least 16 characters'
+n8n_key=${N8N_ENCRYPTION_KEY:-}
+litellm_key=${LITELLM_MASTER_KEY:-}
+grafana_pw=${GRAFANA_ADMIN_PASSWORD:-}
+(( ${#n8n_key} >= 32 )) || err 'N8N_ENCRYPTION_KEY must be at least 32 characters'
+(( ${#litellm_key} >= 24 )) || err 'LITELLM_MASTER_KEY must be at least 24 characters'
+(( ${#grafana_pw} >= 16 )) || err 'GRAFANA_ADMIN_PASSWORD must be at least 16 characters'
 
 for pair in "N8N_BIND=${N8N_BIND:-}" "LITELLM_BIND=${LITELLM_BIND:-}"; do
   name=${pair%%=*}; value=${pair#*=}
