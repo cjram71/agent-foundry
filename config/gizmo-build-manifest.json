@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "components": [
+    {"id":"agent-foundry-core","kind":"application","status":"implemented","verify":"curl -fsS http://127.0.0.1:3000/api/health"},
+    {"id":"autonomy-controller","kind":"application","status":"implemented","verify":"pm2 describe foundry-autonomy >/dev/null"},
+    {"id":"deterministic-model-router","kind":"application","status":"implemented","verify":"test -f packages/model-router/dist/index.js"},
+    {"id":"memory-policy","kind":"application","status":"implemented","verify":"test -f packages/memory-policy/dist/index.js"},
+    {"id":"agent-contracts","kind":"application","status":"implemented","verify":"test -f packages/agent-contracts/dist/index.js"},
+    {"id":"postgresql","kind":"infrastructure","status":"implemented","verify":"docker ps --format '{{.Names}}' | grep -qx foundry_postgres"},
+    {"id":"redis","kind":"infrastructure","status":"implemented","verify":"docker ps --format '{{.Names}}' | grep -qx foundry_redis"},
+    {"id":"n8n","kind":"infrastructure","status":"installable","verify":"curl -fsS http://127.0.0.1:5678/healthz"},
+    {"id":"litellm","kind":"infrastructure","status":"installable","verify":"curl -fsS -H 'Authorization: Bearer $LITELLM_MASTER_KEY' http://127.0.0.1:4000/health/liveliness"},
+    {"id":"observability","kind":"infrastructure","status":"installable","verify":"curl -fsS http://127.0.0.1:9090/-/healthy && curl -fsS http://127.0.0.1:3001/api/health"},
+    {"id":"workflow-template-catalog","kind":"catalog","status":"installable","verify":"test -d ${GIZMO_CATALOG_DIR:-/srv/gizmo/catalogs}/n8n/awesome-n8n-templates/.git"},
+    {"id":"knowledge-vault","kind":"knowledge","status":"installable","verify":"test -d ${GIZMO_KNOWLEDGE_DIR:-/srv/gizmo/knowledge-vault}/10-Missions"},
+    {"id":"mission-contract-runtime","kind":"application","status":"implementation-required","requiredMarker":"packages/mission/.gizmo-runtime-ready"},
+    {"id":"provider-neutral-model-runtime","kind":"application","status":"implementation-required","requiredMarker":"packages/models/.gizmo-runtime-ready"},
+    {"id":"tool-gateway-runtime","kind":"application","status":"implementation-required","requiredMarker":"packages/tools/.gizmo-runtime-ready"},
+    {"id":"hybrid-memory-runtime","kind":"application","status":"implementation-required","requiredMarker":"packages/memory/.gizmo-runtime-ready"},
+    {"id":"skill-foundry-runtime","kind":"application","status":"implementation-required","requiredMarker":"packages/skills/.gizmo-runtime-ready"},
+    {"id":"workflow-factory-runtime","kind":"application","status":"implementation-required","requiredMarker":"packages/workflows/.gizmo-runtime-ready"},
+    {"id":"eval-runtime","kind":"application","status":"implementation-required","requiredMarker":"packages/evals/.gizmo-runtime-ready"},
+    {"id":"telemetry-runtime","kind":"application","status":"implementation-required","requiredMarker":"packages/telemetry/.gizmo-runtime-ready"},
+    {"id":"business-foundry-runtime","kind":"application","status":"implementation-required","requiredMarker":"packages/business/.gizmo-runtime-ready"},
+    {"id":"pgvector-memory","kind":"database","status":"implementation-required","requiredMarker":"packages/database/.gizmo-pgvector-ready"},
+    {"id":"offhost-backup","kind":"operations","status":"installable","verify":"command -v restic >/dev/null"}
+  ]
+}

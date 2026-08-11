@@ -50,3 +50,40 @@ jobs:
             echo 'gate incorrectly accepted a failed mandatory check' >&2
             exit 1
           fi
+      - name: Installer shell syntax
+        run: bash -n scripts/gizmo-*.sh
+      - name: Installer node syntax
+        run: |
+          node --check scripts/gizmo-checkpoint-gate.js
+          node --check scripts/gizmo-verify-complete.js
+          node --check scripts/gizmo-scan-n8n-template.js
+      - name: n8n scanner smoke test
+        run: |
+          cat >/tmp/workflow.json <<'JSON'
+          {"name":"CI safe template","nodes":[{"name":"Set","type":"n8n-nodes-base.set","parameters":{"values":{"string":[{"name":"x","value":"y"}]}}}]}
+          JSON
+          node scripts/gizmo-scan-n8n-template.js /tmp/workflow.json | grep -q '"activationAllowed": false'
+      - name: Build manifest parses
+        run: node -e "JSON.parse(require('fs').readFileSync('config/gizmo-build-manifest.json','utf8'))"
+      - name: Auxiliary Compose renders with pinned CI placeholders
+        env:
+          N8N_IMAGE: n8nio/n8n:ci-pinned
+          N8N_DB_PASSWORD: ci-password
+          N8N_ENCRYPTION_KEY: ci-encryption-key-that-is-long-enough
+          LITELLM_IMAGE: ghcr.io/berriai/litellm:ci-pinned
+          LITELLM_MASTER_KEY: ci-litellm-key
+          GRAFANA_IMAGE: grafana/grafana:ci-pinned
+          PROMETHEUS_IMAGE: prom/prometheus:ci-pinned
+          LOKI_IMAGE: grafana/loki:ci-pinned
+          TEMPO_IMAGE: grafana/tempo:ci-pinned
+          ALLOY_IMAGE: grafana/alloy:ci-pinned
+          NODE_EXPORTER_IMAGE: prom/node-exporter:ci-pinned
+          CADVISOR_IMAGE: ghcr.io/google/cadvisor:ci-pinned
+          GRAFANA_ADMIN_PASSWORD: ci-grafana-password
+        run: docker compose -f infra/compose/gizmo-services.yml config >/dev/null
+      - name: Complete verifier must fail until runtime markers are certified
+        run: |
+          if node scripts/gizmo-verify-complete.js; then
+            echo 'complete verifier incorrectly accepted uncertified runtime modules' >&2
+            exit 1
+          fi

@@ -1,0 +1,27 @@
+loki.write "default" {
+  endpoint { url = "http://loki:3100/loki/api/v1/push" }
+}
+
+local.file_match "host_logs" {
+  path_targets = [{ __path__ = "/var/log/*.log", job = "host" }]
+}
+
+loki.source.file "host_logs" {
+  targets    = local.file_match.host_logs.targets
+  forward_to = [loki.write.default.receiver]
+}
+
+otelcol.receiver.otlp "default" {
+  grpc {}
+  http {}
+  output {
+    traces = [otelcol.exporter.otlp.tempo.input]
+  }
+}
+
+otelcol.exporter.otlp "tempo" {
+  client {
+    endpoint = "tempo:4317"
+    tls { insecure = true }
+  }
+}
