@@ -17,6 +17,9 @@
       "path": "./packages/tools"
     },
     {
+      "path": "./packages/memory"
+    },
+    {
       "path": "./packages/memory-policy"
     },
     {

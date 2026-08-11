@@ -440,14 +440,26 @@ model MemoryRecord {
   task           Task?           @relation(fields: [taskId], references: [id], onDelete: SetNull)
   projectId      String?
   project        Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  businessId     String?
+  sourceReference String?
   scopeType      String
   scopeId        String
   summary        String
   content        Json?
   contentHash    String
   provenance     String
+  source         String          @default("legacy")
+  confidence     Float?
+  trustLevel     String          @default("untrusted")
   sensitivity    String          @default("INTERNAL")
   retentionUntil DateTime
+  observedAt     DateTime?
+  reviewAt       DateTime?
+  expiresAt      DateTime?
+  embeddingModel String?
+  embeddingVersion String?
+  embedding      Unsupported("vector(1536)")?
+  searchVector   Unsupported("tsvector")?
   approvedBy     String?
   artifact       ArtifactRecord?
   createdAt      DateTime        @default(now())
@@ -457,6 +469,8 @@ model MemoryRecord {
   @@index([scopeType, scopeId, status])
   @@index([agentId, kind])
   @@index([retentionUntil])
+  @@index([projectId, trustLevel])
+  @@index([businessId, trustLevel])
 }
 
 model ArtifactRecord {
