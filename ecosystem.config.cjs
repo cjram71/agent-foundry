@@ -24,5 +24,12 @@ module.exports = {
       args: 'run start --workspace=apps/runner',
       env: { ...sharedEnv, NODE_ENV: 'production' },
     },
+    {
+      name: 'foundry-autonomy',
+      cwd: __dirname,
+      script: 'npm',
+      args: 'run start --workspace=apps/autonomy',
+      env: { ...sharedEnv, NODE_ENV: 'production' },
+    },
   ],
 };
