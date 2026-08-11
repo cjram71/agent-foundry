@@ -1,0 +1,6 @@
+{
+  "name": "@gizmo/workflows",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Workflow contracts and n8n integration boundary"
+}
