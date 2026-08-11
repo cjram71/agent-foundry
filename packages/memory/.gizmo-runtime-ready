@@ -1,0 +1,2 @@
+Memory runtime certified by hybrid retrieval/filter/parameterization tests, restored-copy migration rehearsal, approved production pgvector cutover, live extension/index checks, Prisma migration status, and monorepo build. See docs/runtime/MEMORY_RUNTIME.md and /srv/gizmo/checkpoints/phase-06-pgvector-memory.json.
+

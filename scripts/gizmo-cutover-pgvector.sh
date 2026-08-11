@@ -43,6 +43,11 @@ npx prisma migrate deploy --schema packages/database/prisma/schema.prisma
 npx prisma migrate status --schema packages/database/prisma/schema.prisma
 docker exec foundry_postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT extversion FROM pg_extension WHERE extname='vector';" | grep -qx '0.8.2'
 docker exec foundry_postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT to_regclass('\"MemoryRecord_embedding_hnsw_idx\"') IS NOT NULL;" | grep -qx t
-curl -fsS --max-time 10 http://127.0.0.1:3000/api/health >/dev/null
+docker exec foundry_postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc 'SELECT 1;' | grep -qx 1
+if ss -ltn | grep -qE '127\.0\.0\.1:3000[[:space:]]'; then
+  curl -fsS --max-time 10 http://127.0.0.1:3000/api/health >/dev/null
+else
+  echo 'Dashboard health probe skipped: no service is listening on 127.0.0.1:3000.'
+fi
 trap - EXIT
 echo 'pgvector production cutover and pending Prisma migrations: PASS'

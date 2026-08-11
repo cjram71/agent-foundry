@@ -1,0 +1,1 @@
+Production database pgvector readiness certified after verified backup, restored-copy rehearsal, explicit owner approval, same-volume immutable-image cutover, all 11 Prisma migrations, pgvector 0.8.2, HNSW index, SQL connectivity, and monorepo build. See docs/runtime/PGVECTOR_CUTOVER.md and /srv/gizmo/checkpoints/phase-06-pgvector-memory.json.
