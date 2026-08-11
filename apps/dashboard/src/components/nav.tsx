@@ -1,28 +1,3 @@
-'use client';
-
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-
-const links = [
-  ['/', 'Overview'],
-  ['/projects', 'Projects'],
-  ['/autonomy', 'Autonomy'],
-  ['/tasks', 'Tasks'],
-  ['/approvals', 'Approvals'],
-  ['/runs', 'Agent Runs'],
-];
-
-export default function Nav() {
-  const pathname = usePathname();
-  return <aside className="sidebar">
-    <div className="brand"><span className="brand-mark">AF</span><div><strong>Agent Foundry</strong><small>Control Plane</small></div></div>
-    <nav>{links.map(([href,label]) => <Link key={href} href={href} className={pathname === href || (href !== '/' && pathname.startsWith(href)) ? 'active' : ''}>{label}</Link>)}</nav>
-    <div className="sidebar-status">
-      <span className="status-dot"/> Gizmo online<small>Private Tailscale network</small>
-      <button
-        className="button secondary logout-button"
-        onClick={async () => { await fetch('/api/auth/logout', { method: 'POST' }); window.location.href = '/login'; }}
-      >Sign out</button>
-    </div>
-  </aside>;
-}
+'use client';import Link from'next/link';import{usePathname}from'next/navigation';import{useEffect,useState}from'react';
+const sections=[['OPERATIONS',[['/','Today'],['/missions','Missions'],['/projects','Projects'],['/tasks','Tasks'],['/approvals','Approvals'],['/results','Results']]],['INTELLIGENCE',[['/intelligence/agents','Agents'],['/intelligence/knowledge','Knowledge'],['/intelligence/skills','Skills'],['/intelligence/workflows','Workflows']]],['PLATFORM',[['/platform/models-cost','Models & Cost'],['/platform/system-health','System Health'],['/platform/security-audit','Security & Audit']]],['BUSINESS',[['/businesses','Businesses']]]]as const;
+export default function Nav(){const pathname=usePathname(),[system,setSystem]=useState<'unknown'|'operational'|'degraded'|'emergency'>('unknown');useEffect(()=>{let active=true;async function load(){try{const response=await fetch('/api/health',{cache:'no-store'}),data=await response.json();if(active)setSystem(data.emergencyStop?'emergency':response.ok&&data.ok?'operational':'degraded')}catch{if(active)setSystem('unknown')}}void load();const timer=setInterval(load,30000);return()=>{active=false;clearInterval(timer)}},[]);return <aside className="sidebar"><div className="brand"><span className="brand-mark">G</span><div><strong>Gizmo</strong><small>Command Center</small></div></div><nav>{sections.map(([section,links])=><div className="nav-section" key={section}><span>{section}</span>{links.map(([href,text])=><Link key={href} href={href} className={pathname===href||(href!=='/'&&pathname.startsWith(href))?'active':''}>{text}</Link>)}</div>)}</nav><div className="sidebar-status"><span className={`status-dot nav-${system}`}/>{system==='unknown'?'Status unknown':system==='operational'?'Gizmo operational':system==='emergency'?'Emergency stop':'Gizmo degraded'}<small>Private operator surface</small><button className="button secondary logout-button" onClick={async()=>{await fetch('/api/auth/logout',{method:'POST'});window.location.href='/login'}}>Sign out</button></div></aside>}
