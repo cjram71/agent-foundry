@@ -1,6 +1,0 @@
-{
-  "name": "@gizmo/models",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Provider-neutral model roles, routing and usage accounting"
-}
