@@ -8,6 +8,9 @@
   "files": [],
   "references": [
     {
+      "path": "./packages/mission"
+    },
+    {
       "path": "./packages/memory-policy"
     },
     {
