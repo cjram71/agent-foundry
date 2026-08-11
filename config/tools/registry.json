@@ -1,0 +1,17 @@
+[
+  {"id":"health-check","description":"Read approved service health","risk":"green","sideEffect":false,"approvalRequired":false,"executor":"control-plane"},
+  {"id":"read-logs","description":"Read redacted approved service logs","risk":"green","sideEffect":false,"approvalRequired":false,"executor":"control-plane"},
+  {"id":"query-memory","description":"Read memory within the agent scope","risk":"green","sideEffect":false,"approvalRequired":false,"executor":"control-plane"},
+  {"id":"run-tests","description":"Run approved repository tests in a sandbox","risk":"green","sideEffect":false,"approvalRequired":false,"executor":"sandbox-runner"},
+  {"id":"write-workspace","description":"Modify files inside a task workspace","risk":"yellow","sideEffect":true,"approvalRequired":false,"executor":"sandbox-runner"},
+  {"id":"git-branch-commit","description":"Create a task branch and commit reviewed changes","risk":"yellow","sideEffect":true,"approvalRequired":false,"executor":"sandbox-runner"},
+  {"id":"restart-approved-service","description":"Restart a service on the explicit allow-list","risk":"yellow","sideEffect":true,"approvalRequired":false,"executor":"control-plane"},
+  {"id":"deploy-production","description":"Deploy an approved production release","risk":"red","sideEffect":true,"approvalRequired":true,"executor":"human-only"},
+  {"id":"modify-firewall","description":"Modify host firewall policy","risk":"red","sideEffect":true,"approvalRequired":true,"executor":"human-only"},
+  {"id":"rotate-secret","description":"Rotate a production secret","risk":"red","sideEffect":true,"approvalRequired":true,"executor":"human-only"},
+  {"id":"delete-volume","description":"Delete a persistent Docker volume","risk":"red","sideEffect":true,"approvalRequired":true,"executor":"human-only"},
+  {"id":"unrestricted-root-shell","description":"Unrestricted root shell","risk":"black","sideEffect":true,"approvalRequired":true,"executor":"never"},
+  {"id":"docker-socket","description":"Access the rootful host Docker socket","risk":"black","sideEffect":true,"approvalRequired":true,"executor":"never"},
+  {"id":"disable-audit-logs","description":"Disable or erase audit logging","risk":"black","sideEffect":true,"approvalRequired":true,"executor":"never"},
+  {"id":"self-approve-privilege","description":"Approve the agent's own privilege increase","risk":"black","sideEffect":true,"approvalRequired":true,"executor":"never"}
+]

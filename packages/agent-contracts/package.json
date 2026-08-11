@@ -1,0 +1,12 @@
+{
+  "name": "@foundry/agent-contracts",
+  "version": "1.0.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node --test dist/index.test.js",
+    "validate": "npm run build && node dist/validate.js"
+  }
+}

@@ -10,6 +10,7 @@
     "test": "node --experimental-strip-types --experimental-loader ./src/lib/__tests__/ts-resolve-loader.mjs --test --test-force-exit \"src/lib/__tests__/*.test.ts\" \"src/app/api/__tests__/*.test.ts\""
   },
   "dependencies": {
+    "@foundry/agent-contracts": "1.0.0",
     "@foundry/cost": "0.1.0",
     "@foundry/manager": "0.1.0",
     "@foundry/ops": "0.1.0",

@@ -4,27 +4,23 @@ import fs from 'fs/promises';
 import { createHash } from 'crypto';
 import { Worker, UnrecoverableError } from 'bullmq';
 import IORedis from 'ioredis';
-import { GoogleGenAI } from '@google/genai';
 import { PrismaClient } from '@prisma/client';
 import { GitHubClient } from '@foundry/github';
 import { transitionTask, emitTaskEvent, tryEmitTaskEvent } from '@foundry/state-machine';
-import { ReviewerAgent, isTransientProviderError } from './reviewer';
+import { ReviewerAgent } from './reviewer';
 import { SandboxController } from './sandbox';
 import { runValidationPipeline, deriveValidationPlan, ValidationStageError } from './validation';
 import { parseRepairBudget, buildCoderPrompt, buildRepairPrompt, ReviewRejectedError } from './repair';
 import { applyChanges, validateCoderResult, SecurityViolationError, SAFE_EXTENSIONS, BLOCKED_NAMES } from './coder';
 import { createStopSupervisor, deferJobWhileStopped, parseWedgeTimeoutMinutes, WEDGEABLE_STATES } from '@foundry/ops';
 import { estimateUsd, parseRatePerMillion, RATE_ENV } from '@foundry/cost';
+import { generateRouted } from './model-routing';
 
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 dotenv.config({ path: path.resolve(__dirname, '../../../packages/database/.env') });
 
 const prisma = new PrismaClient();
-const connection = new IORedis({ host: '127.0.0.1', port: 6379, password: process.env.REDIS_PASSWORD || undefined, maxRetriesPerRequest: null });
-const apiKey = process.env.GEMINI_API_KEY;
-if (!apiKey) throw new Error('GEMINI_API_KEY is required for the runner');
-const ai = new GoogleGenAI({ apiKey });
-// Keep the 16B Ollama fallback below the 31 GiB VPS memory ceiling.
+const connection = process.env.REDIS_URL ? new IORedis(process.env.REDIS_URL, { maxRetriesPerRequest: null }) : new IORedis({ host: process.env.REDIS_HOST || '127.0.0.1', port: Number(process.env.REDIS_PORT || 6379), password: process.env.REDIS_PASSWORD || undefined, maxRetriesPerRequest: null });
 const MAX_CONTEXT_BYTES = 24_000;
 const MAX_FILE_BYTES = 80_000;
 const CODER_JSON_SCHEMA = {
@@ -77,23 +73,6 @@ async function repositoryContext(root: string, preferredFiles: string[] = []): P
   return chunks.join('');
 }
 
-async function generateCoderResponse(prompt: string) {
-  try {
-    const response = await ai.models.generateContent({ model: 'gemini-3.6-flash', contents: prompt, config: { responseMimeType: 'application/json', responseJsonSchema: CODER_JSON_SCHEMA, maxOutputTokens: 32768 } });
-    return { text: response.text || '', usageMetadata: response.usageMetadata, provider: 'google', model: 'gemini-3.6-flash' };
-  } catch (error) {
-    if (!isTransientProviderError(error)) throw error;
-    const endpoint = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
-    const model = process.env.OLLAMA_MODEL || 'qwen2.5-coder:3b';
-    const response = await fetch(`${endpoint}/api/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, prompt, stream: true, format: CODER_JSON_SCHEMA, options: { temperature: 0.1, num_ctx: 8192 } }), signal: AbortSignal.timeout(600_000) });
-    if (!response.ok) throw new Error(`Ollama fallback failed with HTTP ${response.status}`);
-    const parts = (await response.text()).trim().split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line) as { response?: string; prompt_eval_count?: number; eval_count?: number; done?: boolean });
-    const text = parts.map(part => part.response || '').join('');
-    const finalPart = [...parts].reverse().find(part => part.done) || parts[parts.length - 1];
-    if (!text) throw new Error('Ollama fallback returned no coding response');
-    return { text, usageMetadata: { totalTokenCount: (finalPart?.prompt_eval_count || 0) + (finalPart?.eval_count || 0) }, provider: 'ollama', model };
-  }
-}
 async function executeTask(taskId: string, jobId: string | undefined) {
   const task = await prisma.task.findUnique({ where: { id: taskId }, include: { project: true, approvals: true, agentRuns: { orderBy: { createdAt: 'desc' } } } });
   if (!task) throw new UnrecoverableError(`Task ${taskId} not found`);
@@ -112,7 +91,7 @@ async function executeTask(taskId: string, jobId: string | undefined) {
   const allowed = new Set((await prisma.project.findMany({ where: { authorisedStatus: true }, select: { githubOwner: true, githubRepo: true } })).map(project => `${project.githubOwner}/${project.githubRepo}`));
   const github = new GitHubClient(allowed);
   const repository = { owner: task.project.githubOwner, repo: task.project.githubRepo };
-  const run = await prisma.agentRun.create({ data: { taskId, provider: 'google', model: 'gemini-3.6-flash', role: 'coder', promptHash: 'pending', status: 'running' } });
+  const run = await prisma.agentRun.create({ data: { taskId, provider: 'policy', model: 'pending', role: 'coder', promptHash: 'pending', status: 'running' } });
   let repoPath = ''; let branchName = ''; let headOwner = '';
   let repairCycle = 0;
   const attempt = await prisma.$transaction(async tx => {
@@ -164,8 +143,8 @@ async function executeTask(taskId: string, jobId: string | undefined) {
       let prompt = basePrompt;
       let totalTokens = 0;
       for (let formatAttempt = 0; formatAttempt < 2; formatAttempt += 1) {
-        const response = await generateCoderResponse(prompt);
-        totalTokens += response.usageMetadata?.totalTokenCount || 0;
+        const response = await generateRouted(prisma, taskId, 'coder', prompt, { jsonSchema: CODER_JSON_SCHEMA });
+        totalTokens += response.totalTokens;
         try {
           const text = response.text?.trim(); if (!text) throw new Error('Coder returned no changes');
           const parsed = validateCoderResult(JSON.parse(text));

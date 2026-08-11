@@ -9,5 +9,9 @@
   "scripts": {
     "build": "tsc --build tsconfig.json",
     "clean": "rm -rf apps/*/dist packages/*/dist"
+  },
+  "devDependencies": {
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
   }
 }
