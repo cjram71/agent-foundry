@@ -25,7 +25,8 @@ done
 
 docker exec "$NAME" psql -U gizmo_rehearsal -d agent_foundry_rehearsal -v ON_ERROR_STOP=1 -c 'CREATE EXTENSION IF NOT EXISTS vector;'
 cat "$BACKUP" | docker exec -i "$NAME" pg_restore --clean --if-exists --no-owner -U gizmo_rehearsal -d agent_foundry_rehearsal
-cat "$MIGRATION" | docker exec -i "$NAME" psql -U gizmo_rehearsal -d agent_foundry_rehearsal -v ON_ERROR_STOP=1 >/dev/null
+DATABASE_URL="postgresql://gizmo_rehearsal:${PW}@127.0.0.1:${PORT}/agent_foundry_rehearsal" \
+  npx prisma migrate deploy --schema "$REPO_ROOT/packages/database/prisma/schema.prisma"
 
 docker exec "$NAME" psql -U gizmo_rehearsal -d agent_foundry_rehearsal -Atc "SELECT extversion FROM pg_extension WHERE extname='vector';"
 docker exec "$NAME" psql -U gizmo_rehearsal -d agent_foundry_rehearsal -Atc 'SELECT count(*) FROM "Task";' >/dev/null
