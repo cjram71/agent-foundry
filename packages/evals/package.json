@@ -1,6 +1,0 @@
-{
-  "name": "@gizmo/evals",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Golden, red-team and regression evaluation contracts"
-}
