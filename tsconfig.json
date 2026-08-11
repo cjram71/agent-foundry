@@ -14,6 +14,9 @@
       "path": "./packages/models"
     },
     {
+      "path": "./packages/tools"
+    },
+    {
       "path": "./packages/memory-policy"
     },
     {
