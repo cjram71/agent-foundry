@@ -1,62 +1,27 @@
 {
-  // BUILD ORDER LAW: these projects are not composite, so tsc --build
-  // compiles them in this exact list order and a project may only import
-  // @foundry/* packages listed BEFORE it. Violating this only fails cold
-  // builds (CI / fresh checkout); warm builds mask it behind existing dist
-  // output. Discovered the hard way: P14's alphabetization moved manager
-  // ahead of its dependency policy (see P16 history / CI run 31257624437).
   "files": [],
   "references": [
-    {
-      "path": "./packages/mission"
-    },
-    {
-      "path": "./packages/models"
-    },
-    {
-      "path": "./packages/tools"
-    },
-    {
-      "path": "./packages/memory"
-    },
-    {
-      "path": "./packages/memory-policy"
-    },
-    {
-      "path": "./packages/agent-contracts"
-    },
-    {
-      "path": "./packages/model-router"
-    },
-    {
-      "path": "./packages/cost"
-    },
-    {
-      "path": "./packages/database"
-    },
-    {
-      "path": "./packages/github"
-    },
-    {
-      "path": "./packages/ops"
-    },
-    {
-      "path": "./packages/policy"
-    },
-    {
-      "path": "./packages/manager"
-    },
-    {
-      "path": "./packages/state-machine"
-    },
-    {
-      "path": "./apps/autonomy"
-    },
-    {
-      "path": "./apps/orchestrator"
-    },
-    {
-      "path": "./apps/runner"
-    }
+    {"path":"./packages/mission"},
+    {"path":"./packages/models"},
+    {"path":"./packages/tools"},
+    {"path":"./packages/memory"},
+    {"path":"./packages/skills"},
+    {"path":"./packages/workflows"},
+    {"path":"./packages/evals"},
+    {"path":"./packages/telemetry"},
+    {"path":"./packages/business"},
+    {"path":"./packages/memory-policy"},
+    {"path":"./packages/agent-contracts"},
+    {"path":"./packages/model-router"},
+    {"path":"./packages/cost"},
+    {"path":"./packages/database"},
+    {"path":"./packages/github"},
+    {"path":"./packages/ops"},
+    {"path":"./packages/policy"},
+    {"path":"./packages/manager"},
+    {"path":"./packages/state-machine"},
+    {"path":"./apps/autonomy"},
+    {"path":"./apps/orchestrator"},
+    {"path":"./apps/runner"}
   ]
 }

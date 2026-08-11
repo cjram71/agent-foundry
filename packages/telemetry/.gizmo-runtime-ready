@@ -1,0 +1,1 @@
+Telemetry runtime certified by correlation-chain validation, secret attribute removal, bounded values, finite metrics, 3/3 tests, and forced monorepo build. See docs/runtime/TELEMETRY_RUNTIME.md and /srv/gizmo/checkpoints/phase-11-telemetry.json.

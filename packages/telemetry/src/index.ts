@@ -1,15 +1,6 @@
-export interface GizmoTraceContext {
-  traceId: string;
-  missionId?: string;
-  taskId?: string;
-  attemptId?: string;
-  agentRunId?: string;
-  correlationId?: string;
-}
-
-export interface GizmoMetricEvent extends GizmoTraceContext {
-  name: string;
-  value: number;
-  unit?: string;
-  attributes?: Record<string, string | number | boolean>;
-}
+export interface GizmoTraceContext{traceId:string;missionId?:string;taskId?:string;attemptId?:string;agentRunId?:string;correlationId?:string}
+export interface GizmoMetricEvent extends GizmoTraceContext{name:string;value:number;unit?:string;attributes?:Record<string,string|number|boolean>}
+const sensitive=/(authorization|cookie|password|secret|token|api[-_]?key|credential)/i;
+export function validateTraceContext(context:GizmoTraceContext):void{if(!/^[0-9a-f]{32}$/.test(context.traceId))throw new Error('traceId must be 32 lowercase hexadecimal characters');if(context.agentRunId&&!context.attemptId)throw new Error('agentRunId requires attemptId');if(context.attemptId&&!context.taskId)throw new Error('attemptId requires taskId');if(context.taskId&&!context.missionId)throw new Error('taskId requires missionId')}
+export function sanitizeAttributes(attributes:Record<string,unknown>={}):Record<string,string|number|boolean>{const clean:Record<string,string|number|boolean>={};for(const[key,value]of Object.entries(attributes)){if(sensitive.test(key))continue;if(typeof value==='string'||typeof value==='boolean'||(typeof value==='number'&&Number.isFinite(value)))clean[key]=typeof value==='string'?value.slice(0,256):value}return clean}
+export function createMetric(context:GizmoTraceContext,name:string,value:number,unit?:string,attributes?:Record<string,unknown>):GizmoMetricEvent{validateTraceContext(context);if(!/^[a-z][a-z0-9_.-]*$/.test(name))throw new Error('invalid metric name');if(!Number.isFinite(value))throw new Error('metric value must be finite');return{...context,name,value,unit,attributes:sanitizeAttributes(attributes)}}

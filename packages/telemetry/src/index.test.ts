@@ -1,0 +1,4 @@
+import assert from'node:assert/strict';import test from'node:test';import{createMetric,validateTraceContext}from'./index';const traceId='a'.repeat(32);
+test('correlates the complete mission to agent-run chain',()=>{assert.doesNotThrow(()=>validateTraceContext({traceId,missionId:'m',taskId:'t',attemptId:'a',agentRunId:'r'}));assert.throws(()=>validateTraceContext({traceId,taskId:'t'}),/missionId/)});
+test('removes secret-like attributes and bounds strings',()=>{const metric=createMetric({traceId},'model.latency',12,'ms',{provider:'local',apiKey:'nope',authorization:'nope',detail:'x'.repeat(400)});assert.deepEqual(Object.keys(metric.attributes!).sort(),['detail','provider']);assert.equal(String(metric.attributes!.detail).length,256)});
+test('rejects malformed traces and non-finite metrics',()=>{assert.throws(()=>createMetric({traceId:'bad'},'ok',1),/traceId/);assert.throws(()=>createMetric({traceId},'ok',Infinity),/finite/)});
