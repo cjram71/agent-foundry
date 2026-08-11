@@ -1,0 +1,6 @@
+{
+  "name": "@gizmo/business",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Business Foundry domain contracts and opportunity scoring"
+}
