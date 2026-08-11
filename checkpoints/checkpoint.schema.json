@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gizmo.local/schemas/checkpoint.schema.json",
+  "title": "Gizmo Phase Checkpoint",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "phaseId",
+    "phaseName",
+    "status",
+    "gitSha",
+    "builder",
+    "startedAt",
+    "checks",
+    "rollbackReady"
+  ],
+  "properties": {
+    "phaseId": { "type": "string", "minLength": 1 },
+    "phaseName": { "type": "string", "minLength": 1 },
+    "status": {
+      "type": "string",
+      "enum": ["PENDING", "RUNNING", "VERIFYING", "PASS", "FAIL", "ROLLED_BACK", "BLOCKED"]
+    },
+    "gitSha": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
+    "hostId": { "type": "string" },
+    "builder": { "type": "string", "minLength": 1 },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": ["string", "null"], "format": "date-time" },
+    "scope": { "type": "array", "items": { "type": "string" } },
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "mandatory", "result"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "mandatory": { "type": "boolean" },
+          "result": { "type": "string", "enum": ["PASS", "FAIL", "SKIP"] },
+          "evidenceRef": { "type": ["string", "null"] },
+          "summary": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "humanApproval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "status"],
+      "properties": {
+        "required": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["NOT_REQUIRED", "PENDING", "APPROVED", "REJECTED"] },
+        "approvedBy": { "type": ["string", "null"] },
+        "approvedAt": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "rollbackReady": { "type": "boolean" },
+    "rollbackRef": { "type": ["string", "null"] },
+    "artifacts": { "type": "array", "items": { "type": "string" } },
+    "notes": { "type": ["string", "null"] }
+  }
+}

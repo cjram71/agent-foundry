@@ -36,3 +36,17 @@ jobs:
         run: npm test --workspace=apps/runner
       - name: GitHub adapter tests
         run: npm test --workspace=packages/github
+      - name: Gizmo phase-gate PASS smoke test
+        run: node scripts/gizmo-checkpoint-gate.js checkpoints/examples/phase-00-pass.example.json
+      - name: Gizmo phase-gate rejects failed mandatory check
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const source = JSON.parse(fs.readFileSync('checkpoints/examples/phase-00-pass.example.json', 'utf8'));
+          source.checks[0].result = 'FAIL';
+          fs.writeFileSync('/tmp/gizmo-checkpoint-fail.json', JSON.stringify(source));
+          NODE
+          if node scripts/gizmo-checkpoint-gate.js /tmp/gizmo-checkpoint-fail.json; then
+            echo 'gate incorrectly accepted a failed mandatory check' >&2
+            exit 1
+          fi

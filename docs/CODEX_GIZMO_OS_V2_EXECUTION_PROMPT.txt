@@ -7,7 +7,9 @@ AUTHORITATIVE FILES
 2. docs/GIZMO_OS_V2_MIGRATION_ROADMAP.md
 3. docs/GIZMO_OS_V2_CHANGE_MATRIX.md
 4. docs/GIZMO_OS_V2_REPO_LAYOUT.txt
-5. current repository documentation and tests
+5. docs/GIZMO_PHASE_GATES.md
+6. checkpoints/checkpoint.schema.json
+7. current repository documentation and tests
 
 SOURCE BASELINE
 Repository: cjram71/agent-foundry
@@ -16,6 +18,38 @@ This is the post-PR #5 VPS sync baseline.
 
 PRIMARY RULE
 DO NOT rebuild this as a clean-slate FastAPI/agent-framework project. The existing TypeScript/Next.js/Prisma/PostgreSQL/Redis/BullMQ/Runner/Policy/State-Machine system is the production foundation.
+
+PHASE-GATE LAW
+No phase may start unless the previous phase has a valid machine-verifiable PASS checkpoint.
+
+Every phase MUST define before execution:
+- PRE-CHECK
+- EXECUTE
+- VERIFY
+- ROLLBACK
+
+Every phase MUST produce a runtime checkpoint JSON under `/srv/gizmo/checkpoints/` using the source-controlled checkpoint contract. Before starting the next phase, run:
+
+node scripts/gizmo-checkpoint-gate.js /srv/gizmo/checkpoints/<previous-phase>.json
+
+A non-zero exit blocks progression.
+
+A phase checkpoint may be marked PASS only when:
+- all mandatory verification checks pass,
+- rollback readiness is confirmed,
+- the recorded Git SHA matches the implemented source state,
+- required human approval is APPROVED,
+- no security control was weakened to make tests pass.
+
+On verification failure:
+1. STOP progression.
+2. Record non-secret evidence.
+3. Attempt only bounded repairs within current phase scope.
+4. Re-run the complete mandatory verification suite.
+5. If still failing, execute rollback.
+6. Verify restoration to the prior PASS checkpoint.
+7. Mark FAIL/ROLLED_BACK/BLOCKED as appropriate.
+8. Do NOT start the next phase.
 
 DO NOT:
 - delete working Agent Foundry subsystems,
@@ -27,12 +61,14 @@ DO NOT:
 - commit secrets,
 - mass-rename packages while doing functional migration,
 - install optional infrastructure without a proven need,
-- create the new authoritative GitHub repository until the evolved build passes its acceptance gates.
+- create the new authoritative GitHub repository until the evolved build passes its acceptance gates,
+- continue past a failed checkpoint,
+- weaken or delete verification to manufacture a PASS.
 
 WORK STYLE
 - Work in small reviewable phases.
-- Before every phase state scope, risks, files/services affected, tests, rollback.
-- After every phase provide deterministic evidence.
+- Before every phase state scope, risks, files/services affected, PRE-CHECK, EXECUTE, VERIFY, ROLLBACK, and human approvals.
+- After every phase provide deterministic evidence and write the checkpoint record.
 - If observed VPS reality conflicts with the written spec, stop that slice and report the conflict.
 - Preserve current human approval gates and policy/state-machine invariants.
 - Use dedicated branches/worktrees.
@@ -55,23 +91,26 @@ Create:
 - docs/baselines/2026-08-11-vps-baseline.md
 - docs/baselines/2026-08-11-drift-report.md only if drift exists
 - docs/baselines/2026-08-11-phase1-plan.md
+- /srv/gizmo/checkpoints/phase-00-audit.json
 
 Do not install, upgrade, stop, restart, migrate, delete, write production configuration, or change Git state during Phase 0.
 
-Report:
-1. exact Git SHA and worktree status,
-2. running service inventory,
-3. DB/Redis status,
-4. Docker inventory,
-5. PM2 status,
-6. host resources,
-7. firewall/listening ports,
-8. backup/restore verification,
-9. AI/Ollama configuration without secrets,
-10. CI/test coverage,
-11. material discrepancies,
-12. proposed Phase 1 changes,
-13. rollback per Phase 1 change,
-14. human approvals needed.
+PHASE 0 VERIFY must include:
+1. exact Git SHA and worktree status recorded,
+2. running service inventory recorded,
+3. DB/Redis status recorded,
+4. Docker inventory recorded,
+5. PM2 status recorded,
+6. host resources recorded,
+7. firewall/listening ports recorded,
+8. backup recency and restore-verification state recorded,
+9. AI/Ollama configuration recorded without secrets,
+10. CI/test coverage recorded,
+11. material discrepancies recorded,
+12. proposed Phase 1 changes recorded,
+13. rollback per proposed Phase 1 change recorded,
+14. human approvals needed recorded.
 
-STOP AFTER PHASE 0 until reviewed.
+For Phase 0, human review is required before the checkpoint is considered PASS for progression into Phase 1.
+
+STOP AFTER PHASE 0 until reviewed and the checkpoint gate passes.
