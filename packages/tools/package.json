@@ -1,6 +1,0 @@
-{
-  "name": "@gizmo/tools",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Capability registry and audited Tool Gateway contracts"
-}
