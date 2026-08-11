@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node dist/worker.js",
     "build": "tsc",
-    "test": "npm run build && node --test dist/catalog.test.js dist/plan.test.js"
+    "test": "npm run build && node --test dist/catalog.test.js dist/plan.test.js dist/planner-model.test.js"
   },
   "devDependencies": {
     "@types/node": "^26.1.2",
