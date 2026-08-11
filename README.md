@@ -1,148 +1,290 @@
-# Agent Foundry
+# Gizmo OS v2
 
-Agent Foundry is a self-hosted control plane that reads GitHub repositories, plans work with specialist AI agents, writes and validates code in isolated containers, reviews the result, and opens a draft pull request for human approval. It never merges automatically.
+**Gizmo OS v2** is the evolution of the deployed **Agent Foundry** control plane into a persistent, self-hosted AI software, workflow, knowledge, and business operating system.
 
-## Deployed architecture
+This repository deliberately evolves the working production foundation instead of replacing it with a clean-slate agent framework.
 
-- **Dashboard:** Next.js administration UI on `127.0.0.1:3000`
-- **Orchestrator:** profiles repositories, selects catalog agents, and creates approval-gated plans
-- **Runner:** generates atomic edits, validates offline, reviews, and opens draft PRs
-- **PostgreSQL:** projects, tasks, approvals, attempts, events, and audit history
-- **Redis/BullMQ:** planning and execution queues
-- **Gemini:** primary AI provider
-- **Ollama:** private VPS fallback using `deepseek-coder-v2:16b-lite-instruct-q4_K_M`
+## Provenance
 
-Credentials, model files, databases, backups, logs, and task workspaces are not stored in Git.
+Accepted VPS/GitHub baseline:
 
-## Workflow
+```text
+Repository: cjram71/agent-foundry
+Commit: 8d6dcd4c856f9166a08927a3ffdb6807b4d5c9f1
+Date: 2026-08-11
+Source: PR #5 — Sync current VPS build
+```
 
-1. An administrator registers and authorizes a GitHub repository.
-2. Agent Foundry reads a bounded inventory and detects the stack before planning.
-3. The orchestrator selects agents from the pinned catalog and creates a plan.
-4. A human approves the plan.
-5. The runner clones the repository and generates bounded exact find/replace edits.
-6. Every edit is validated before any file is written, keeping multi-file changes atomic.
-7. Validation runs in Docker. Node projects use allowlisted package scripts; static sites use built-in HTML, local-asset, and JavaScript syntax checks without dependency installation.
-8. Safety and plan-fidelity reviewers must approve.
-9. Agent Foundry pushes a task branch and opens a draft pull request.
-10. A human reviews and merges on GitHub.
+The baseline already provides the hard parts of a safe execution control plane:
 
-Writable repositories use direct task branches. Read-only repositories use a verified fork owned by the authenticated GitHub account.
+- Next.js operator dashboard
+- PostgreSQL 16 + Prisma durable state
+- Redis + BullMQ queues
+- deterministic task state machine
+- deterministic project policy engine
+- cost accounting and spending brake
+- orchestrator and project manager
+- restricted Docker validation sandboxes
+- repair/review pipeline
+- GitHub task branches and draft PRs
+- human plan/merge approval gates
+- task attempts/events/transitions/audit history
+- emergency stop, cancellation, wedge recovery
+- backup and restore verification
+- Gemini primary AI path
+- private Ollama fallback
+- VPS-synced Results & Run Log interface
+
+## Gizmo operating model
+
+> Use deterministic software wherever possible, AI judgment wherever necessary, and human approval wherever consequences justify it.
+
+```text
+                              HUMAN OWNER
+                                  |
+                         GIZMO OPERATOR UI
+                                  |
+                         MISSION COMPILER
+                                  |
+                       MISSION CONTRACT
+                                  |
+                            TASK ROUTER
+                                  |
+          +-----------------------+-----------------------+
+          |                       |                       |
+   DETERMINISTIC WORK         AGENTIC WORK          HUMAN DECISION
+          |                       |                       |
+     n8n / APIs            Orchestrator/Runner        Approvals
+          |                       |
+          |                   MODEL LAYER
+          |                       |
+          |                    LiteLLM
+          |                       |
+          |      OpenAI / Codex / Gemini / Claude
+          |                       |
+          |                    Ollama
+          |                 private fallback
+          +-----------------------+-----------------------+
+                                  |
+                            TOOL GATEWAY
+                                  |
+                             EXECUTION
+                                  |
+                            VERIFICATION
+                                  |
+                               MEMORY
+                                  |
+             PostgreSQL + pgvector + Knowledge Vault
+                                  |
+                           LEARNING ENGINE
+                                  |
+        Skill Foundry / Workflow Factory / Agent Foundry
+                                  |
+                           SOFTWARE FACTORY
+                                  |
+                           BUSINESS FOUNDRY
+```
+
+## What remains authoritative
+
+Gizmo does **not** throw away Agent Foundry. The existing TypeScript control plane remains authoritative for execution safety.
+
+Keep and extend:
+
+```text
+apps/
+  dashboard/
+  orchestrator/
+  runner/
+
+packages/
+  cost/
+  database/
+  github/
+  manager/
+  ops/
+  policy/
+  state-machine/
+```
+
+The following are explicit non-goals for the v2 migration:
+
+- no second FastAPI/SQLAlchemy control plane
+- no unnecessary PostgreSQL major upgrade
+- no permanent swarm of agents
+- no direct agent push/merge to protected `main`
+- no unrestricted agent root shell
+- no Docker socket inside task validation containers
+
+## Gizmo v2 additions
+
+The migration adds these capabilities incrementally:
+
+```text
+packages/
+  mission/       Mission Contracts and compiler
+  models/        provider-neutral model routing / LiteLLM
+  tools/         capability-based Tool Gateway
+  memory/        pgvector + hybrid retrieval + provenance
+  skills/        versioned/certified Skill Foundry
+  workflows/     n8n Workflow Contracts and bridge
+  evals/         goldens, red-team, regression gates
+  telemetry/     OpenTelemetry correlation
+  business/      Business Foundry models/services
+
+infra/
+  litellm/
+  n8n/
+  postgres/
+  grafana/
+  prometheus/
+  loki/
+  tempo/
+  alloy/
+
+skills/
+evals/
+knowledge/
+```
+
+## Blocking security work
+
+Before adding the larger Gizmo services, the migration must:
+
+1. enforce authoritative DB-backed session checks on protected server-rendered pages;
+2. reduce the current shared PM2 `.env` blast radius so dashboard/orchestrator/runner receive only required secrets;
+3. reconcile Ollama fallback model configuration;
+4. expand CI across the entire control plane, authentication, policy, state-machine and migration tests.
+
+## Mission Contracts
+
+A Gizmo Mission sits above atomic Tasks and records:
+
+- goal
+- context
+- constraints
+- deliverables
+- Definition of Done
+- failure conditions
+- risk
+- budget/token budget
+- parallelism ceiling
+- allowed tool classes
+- approval rules
+- optional deadline
+- project/business linkage
+- provenance
+
+A model saying “done” is never sufficient evidence of mission completion.
+
+## Models
+
+Current Gemini/Ollama behavior is preserved while the system moves behind a provider-neutral interface. LiteLLM becomes a private internal router. Codex is added as a **controlled builder/reviewer capability** and must still pass the Runner’s schema validation, path validation, policy, atomic edits, sandbox tests, independent review, draft PR, and human gates.
+
+## Memory and knowledge
+
+Gizmo keeps PostgreSQL 16 and adds pgvector only after a restored-copy migration rehearsal. Retrieval combines PostgreSQL lexical/full-text search and pgvector semantic search with provenance and trust metadata.
+
+An Obsidian-compatible vault under `/srv/gizmo/knowledge-vault/` provides a human-readable organizational view. Secrets never belong in the vault.
+
+## Skills and workflows
+
+Skills are reusable, versioned procedures with manifests, tests, permissions, risk ceilings, and evals. Full skill content is loaded only when needed.
+
+n8n is Gizmo’s deterministic workflow engine, not its brain. Its editor stays private, credentials stay out of Git, and consequential actions remain subject to Gizmo policy/approval.
+
+## Verification and AgentOps
+
+Gizmo v2 adds golden datasets, red-team tests, independent review, and trace correlation across:
+
+```text
+Mission -> Task -> Attempt -> AgentRun -> model/tool call
+        -> sandbox -> GitHub PR -> approval
+```
+
+Planned private observability stack:
+
+- OpenTelemetry
+- Grafana Alloy
+- Tempo
+- Prometheus
+- Loki
+- Grafana
+- node_exporter
+- cAdvisor
+
+## Business Foundry
+
+After the execution platform is reliable and observable, Gizmo adds business-process scanning, automation opportunity scoring, ROI analysis, reusable-asset detection, and productization workflows.
+
+The flywheel is:
+
+```text
+business audit
+ -> pilot
+ -> implementation
+ -> measured result
+ -> repeated pattern
+ -> reusable skill/workflow/template
+ -> product candidate
+ -> SaaS/app/managed service
+```
 
 ## Security boundaries
 
-- No automatic merges
-- Human repository-authorization and plan-approval gates
-- Allowlisted repositories and validated branches
-- Bounded model and repository context
-- Exact atomic edits instead of unrestricted rewrites
-- Restricted Docker validation with offline validation stages
-- Secret and credential paths blocked from generated changes
-- Agent catalog commit verified on every planning job
-- `.env` parsed as data and never evaluated as shell code
-- Dashboard bound to loopback
+Non-negotiable rules:
 
-Expose the dashboard only through a secured reverse proxy, SSH tunnel, or private Tailscale connection.
+- no automatic merges
+- human approval remains enabled
+- AI output/repository/retrieved content is untrusted data
+- AI never owns security policy
+- fail closed on missing policy/security configuration
+- no production secrets in model prompts/workspaces/logs
+- no unrestricted Docker/host access for agents
+- deterministic verification before “done”
+- every infrastructure migration has rollback and restore proof
+- every durable memory has provenance
+- every capability is tested before certification
 
-## Requirements
+## Current installation foundation
+
+The deployed Agent Foundry foundation currently expects:
 
 - Ubuntu 24.04 LTS
-- Node.js 22 or newer
-- npm, Git, and authenticated GitHub CLI
-- Docker Engine with Compose v2
+- Node.js 22+
+- npm + Git + authenticated `gh`
+- Docker Engine + Compose v2
 - PM2
-- Optional Tailscale
-- Optional Ollama bound to `127.0.0.1:11434`
+- PostgreSQL 16
+- Redis 7
+- Gemini API credentials
+- optional private Ollama on `127.0.0.1:11434`
 
-Size CPU, memory, and storage appropriately when running the deployed 16B quantized Ollama model.
+Do not reinstall a working VPS merely to follow a design document. Observed VPS state is the first source of truth.
 
-## Install
+## Build documents
 
-```bash
-git clone https://github.com/cjram71/agent-foundry.git
-cd agent-foundry
-cp .env.example .env
-chmod 600 .env
-```
+Read these before making Gizmo migrations:
 
-Fill in unique PostgreSQL, Redis, and JWT secrets, plus `GEMINI_API_KEY`. Set `APP_URL` to the exact browser origin, including scheme, host, and port.
+- [`docs/GIZMO_OS_MASTER_BUILD_v2.md`](docs/GIZMO_OS_MASTER_BUILD_v2.md)
+- [`docs/GIZMO_OS_V2_MIGRATION_ROADMAP.md`](docs/GIZMO_OS_V2_MIGRATION_ROADMAP.md)
+- [`docs/GIZMO_OS_V2_CHANGE_MATRIX.md`](docs/GIZMO_OS_V2_CHANGE_MATRIX.md)
+- [`docs/GIZMO_OS_V2_REPO_LAYOUT.txt`](docs/GIZMO_OS_V2_REPO_LAYOUT.txt)
 
-```bash
-gh auth login
-gh auth status
-bash scripts/install-ubuntu.sh
-```
+Existing Agent Foundry operational documentation remains valid until explicitly superseded.
 
-Create the first administrator without sourcing `.env` as shell code:
+## Source-of-truth order
 
-```bash
-source scripts/load-env.sh
-foundry_load_env .env
-node packages/database/create-admin.js
-```
+When information conflicts:
 
-Start the services:
+1. observed VPS state
+2. current accepted Git code
+3. deterministic tests/database state
+4. Gizmo v2 build specification
+5. current official upstream documentation
+6. tutorials/videos
+7. model assumptions
 
-```bash
-pm2 start ecosystem.config.cjs
-pm2 save
-pm2 status
-```
+## Publication plan
 
-## AI providers
-
-```dotenv
-GEMINI_API_KEY=replace_with_your_key
-OLLAMA_URL=http://127.0.0.1:11434
-OLLAMA_MODEL=deepseek-coder-v2:16b-lite-instruct-q4_K_M
-```
-
-Install the fallback model separately:
-
-```bash
-OLLAMA_HOST=127.0.0.1:11434 ollama serve
-ollama pull deepseek-coder-v2:16b-lite-instruct-q4_K_M
-```
-
-Agent Foundry uses Ollama only for quota, rate-limit, temporary availability, and related provider failures. Keep its API private.
-
-## Backup and migration safety
-
-Before production migrations:
-
-```bash
-bash scripts/backup.sh
-bash scripts/restore.sh --verify /path/to/backup
-bash scripts/vps-inspection.sh
-```
-
-The restore drill uses a throwaway database and proves the backup is usable. See [Migration Rescue](docs/MIGRATION-RESCUE.md) and [Backups](docs/BACKUPS.md).
-
-## Verify
-
-```bash
-npm ci
-npx prisma generate --schema packages/database/prisma/schema.prisma
-npm run build
-npm run build --workspace=apps/dashboard
-npm test --workspace=apps/orchestrator
-npm test --workspace=apps/runner
-npm test --workspace=packages/github
-pm2 status
-curl -fsS http://127.0.0.1:3000/api/health
-```
-
-A healthy response reports `ok: true` with database and Redis checks set to `true`. GitHub Actions uses Node 24-compatible actions while testing the application on Node 22.
-
-## Operations
-
-```bash
-pm2 logs foundry-dashboard
-pm2 logs foundry-orchestrator
-pm2 logs foundry-runner
-pm2 restart ecosystem.config.cjs --update-env
-```
-
-The wedge sweeper safely fails tasks that stop progressing. Historical failures remain auditable until intentionally archived.
-
-See [Architecture](docs/ARCHITECTURE.md), [Operations](docs/OPERATIONS.md), [Fork Execution](docs/FORK-EXECUTION.md), [Role Catalog](docs/ROLE-CATALOG.md), and [Reinstall](docs/REINSTALL.md).
+This migration is developed on a dedicated branch first. After end-to-end acceptance, preserve Git history and publish the accepted build as a private `cjram71/gizmo-os` repository (or owner-approved equivalent). Do not delete/archive the original Agent Foundry repository without explicit approval.
