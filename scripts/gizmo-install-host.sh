@@ -2,6 +2,10 @@
 set -euo pipefail
 [[ $(id -u) -eq 0 ]] || { echo 'Run this host prerequisite step with sudo.' >&2; exit 1; }
 
+OPERATOR=${SUDO_USER:-}
+[[ -n "$OPERATOR" && "$OPERATOR" != root ]] || { echo 'Run via sudo from the intended non-root Gizmo operator account.' >&2; exit 1; }
+OPERATOR_GROUP=$(id -gn "$OPERATOR")
+
 if command -v apt-get >/dev/null 2>&1; then
   export DEBIAN_FRONTEND=noninteractive
   apt-get update
@@ -11,6 +15,15 @@ else
   exit 1
 fi
 
-install -d -m 0750 /etc/gizmo /srv/gizmo /srv/gizmo/checkpoints /srv/gizmo/catalogs /srv/gizmo/knowledge-vault /srv/gizmo/backups
+install -d -m 0750 /etc/gizmo
+install -d -o "$OPERATOR" -g "$OPERATOR_GROUP" -m 0750 \
+  /srv/gizmo \
+  /srv/gizmo/checkpoints \
+  /srv/gizmo/catalogs \
+  /srv/gizmo/knowledge-vault \
+  /srv/gizmo/backups \
+  /srv/gizmo/workflow-exports \
+  /srv/gizmo/generated
 
-echo 'Host prerequisites installed. Docker/Node/PM2 are preserved from the existing Agent Foundry install and are verified by gizmo-preflight.sh.'
+echo "Host prerequisites installed; /srv/gizmo is owned by $OPERATOR:$OPERATOR_GROUP."
+echo 'Docker/Node/PM2 are preserved from the existing Agent Foundry install and verified by gizmo-preflight.sh.'
