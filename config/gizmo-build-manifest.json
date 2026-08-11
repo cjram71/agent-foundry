@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "components": [
     {"id":"agent-foundry-core","kind":"application","status":"implemented","verify":"curl -fsS http://127.0.0.1:3000/api/health"},
-    {"id":"autonomy-controller","kind":"application","status":"implemented","verify":"pm2 describe foundry-autonomy >/dev/null"},
+    {"id":"autonomy-controller","kind":"application","status":"implemented","verify":"pgrep -f '/apps/autonomy/dist/worker.js$' >/dev/null"},
     {"id":"deterministic-model-router","kind":"application","status":"implemented","verify":"test -f packages/model-router/dist/index.js"},
     {"id":"memory-policy","kind":"application","status":"implemented","verify":"test -f packages/memory-policy/dist/index.js"},
     {"id":"agent-contracts","kind":"application","status":"implemented","verify":"test -f packages/agent-contracts/dist/index.js"},
