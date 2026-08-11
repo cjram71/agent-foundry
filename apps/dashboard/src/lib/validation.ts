@@ -16,8 +16,19 @@ export function parseProjectInput(value: unknown): ProjectInput {
   if (!value || typeof value !== 'object') throw new Error('Invalid request body');
   const data = value as Record<string, unknown>;
   const name = typeof data.name === 'string' ? data.name.trim() : '';
-  const githubOwner = typeof data.githubOwner === 'string' ? data.githubOwner.trim() : '';
-  const githubRepository = typeof data.githubRepository === 'string' ? data.githubRepository.trim() : '';
+  let githubOwner = typeof data.githubOwner === 'string' ? data.githubOwner.trim() : '';
+  let githubRepository = typeof data.githubRepository === 'string' ? data.githubRepository.trim() : '';
+  const repositoryUrl = githubRepository.match(/^https:\/\/github\.com\/([^/]+)\/([^/#]+?)(?:\.git)?\/?$/i);
+  const repositoryPair = githubRepository.match(/^([^/]+)\/([^/]+)$/);
+  if (repositoryUrl) {
+    githubOwner = repositoryUrl[1];
+    githubRepository = repositoryUrl[2];
+  } else if (repositoryPair) {
+    githubOwner = repositoryPair[1];
+    githubRepository = repositoryPair[2].replace(/\.git$/i, '');
+  } else {
+    githubRepository = githubRepository.replace(/\.git$/i, '');
+  }
   const defaultBranch = typeof data.defaultBranch === 'string' && data.defaultBranch.trim() ? data.defaultBranch.trim() : 'main';
   const spendingLimit = typeof data.spendingLimit === 'number' ? data.spendingLimit : Number(data.spendingLimit ?? 50);
   const projectType = typeof data.projectType === 'string' ? data.projectType : 'web_app';

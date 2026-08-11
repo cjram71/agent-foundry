@@ -8,7 +8,7 @@ import { GoogleGenAI } from '@google/genai';
 import { PrismaClient } from '@prisma/client';
 import { GitHubClient } from '@foundry/github';
 import { transitionTask, emitTaskEvent, tryEmitTaskEvent } from '@foundry/state-machine';
-import { ReviewerAgent } from './reviewer';
+import { ReviewerAgent, isTransientProviderError } from './reviewer';
 import { SandboxController } from './sandbox';
 import { runValidationPipeline, deriveValidationPlan, ValidationStageError } from './validation';
 import { parseRepairBudget, buildCoderPrompt, buildRepairPrompt, ReviewRejectedError } from './repair';
@@ -24,7 +24,8 @@ const connection = new IORedis({ host: '127.0.0.1', port: 6379, password: proces
 const apiKey = process.env.GEMINI_API_KEY;
 if (!apiKey) throw new Error('GEMINI_API_KEY is required for the runner');
 const ai = new GoogleGenAI({ apiKey });
-const MAX_CONTEXT_BYTES = 45_000;
+// Keep the 16B Ollama fallback below the 31 GiB VPS memory ceiling.
+const MAX_CONTEXT_BYTES = 24_000;
 const MAX_FILE_BYTES = 80_000;
 const CODER_JSON_SCHEMA = {
   type: 'object',
@@ -81,11 +82,10 @@ async function generateCoderResponse(prompt: string) {
     const response = await ai.models.generateContent({ model: 'gemini-3.6-flash', contents: prompt, config: { responseMimeType: 'application/json', responseJsonSchema: CODER_JSON_SCHEMA, maxOutputTokens: 32768 } });
     return { text: response.text || '', usageMetadata: response.usageMetadata, provider: 'google', model: 'gemini-3.6-flash' };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (!/(?:429|503|UNAVAILABLE|RESOURCE_EXHAUSTED|quota exceeded|rate.?limit|high demand|temporar)/i.test(message)) throw error;
+    if (!isTransientProviderError(error)) throw error;
     const endpoint = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
     const model = process.env.OLLAMA_MODEL || 'qwen2.5-coder:3b';
-    const response = await fetch(`${endpoint}/api/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, prompt, stream: true, format: CODER_JSON_SCHEMA, options: { temperature: 0.1, num_ctx: 16384 } }), signal: AbortSignal.timeout(600_000) });
+    const response = await fetch(`${endpoint}/api/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, prompt, stream: true, format: CODER_JSON_SCHEMA, options: { temperature: 0.1, num_ctx: 8192 } }), signal: AbortSignal.timeout(600_000) });
     if (!response.ok) throw new Error(`Ollama fallback failed with HTTP ${response.status}`);
     const parts = (await response.text()).trim().split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line) as { response?: string; prompt_eval_count?: number; eval_count?: number; done?: boolean });
     const text = parts.map(part => part.response || '').join('');

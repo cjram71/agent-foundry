@@ -23,6 +23,11 @@ export interface FidelityContext {
   planSummary: string;
 }
 
+export function isTransientProviderError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /(?:429|503|UNAVAILABLE|RESOURCE_EXHAUSTED|quota|rate.?limit|high demand|temporar|fetch failed|network|ECONN(?:RESET|REFUSED)|ETIMEDOUT|aborted due to timeout)/i.test(message);
+}
+
 /** Parse the APPROVED/REJECTED contract. Unparseable or empty output is NOT
  *  a verdict and never counts as approval (null). */
 export function parseReviewVerdict(text: string | undefined | null): boolean | null {
@@ -69,8 +74,7 @@ export class ReviewerAgent {
       const response = await this.ai.models.generateContent({ model: 'gemini-3.6-flash', contents: prompt });
       return response.text?.trim() || '';
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (!/(?:429|503|UNAVAILABLE|RESOURCE_EXHAUSTED|quota|rate.?limit|high demand|temporar)/i.test(message)) throw error;
+      if (!isTransientProviderError(error)) throw error;
       const endpoint = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
       const model = process.env.OLLAMA_MODEL || 'deepseek-coder-v2:16b-lite-instruct-q4_K_M';
       const response = await fetch(`${endpoint}/api/generate`, {
