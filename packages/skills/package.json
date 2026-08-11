@@ -1,6 +1,0 @@
-{
-  "name": "@gizmo/skills",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Skill registry, versioning, loading and certification contracts"
-}
