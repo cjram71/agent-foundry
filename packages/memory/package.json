@@ -1,6 +1,0 @@
-{
-  "name": "@gizmo/memory",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Provenance-aware Gizmo memory and hybrid retrieval contracts"
-}
