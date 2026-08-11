@@ -17,6 +17,7 @@
     "@foundry/github": "0.1.0",
     "@foundry/ops": "0.1.0",
     "@foundry/state-machine": "0.1.0",
-    "@google/genai": "^2.15.0"
+    "@google/genai": "^2.15.0",
+    "@foundry/model-router": "0.1.0"
   }
 }

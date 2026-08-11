@@ -1,0 +1,8 @@
+{
+  "name": "autonomy",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {"start":"node dist/worker.js","build":"tsc","test":"npm run build && node --test --test-force-exit dist/worker.test.js"},
+  "dependencies": {"@foundry/manager":"0.1.0","@foundry/ops":"0.1.0","@foundry/policy":"0.1.0","@foundry/state-machine":"0.1.0","bullmq":"^5.58.5","ioredis":"^5.7.0"},
+  "devDependencies": {"@types/node":"^26.1.2","typescript":"^7.0.2"}
+}

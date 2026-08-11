@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict'; import test from 'node:test'; import { routeModel, utcDayStart, type RouteInput } from './index';
+function input(overrides: Partial<RouteInput> = {}): RouteInput { return { role:'planner',risk:'medium',privacySensitive:false,complexity:'complex',estimatedTokens:1000,cloudRatePerMillionUsd:2,cloudAvailable:true,localAvailable:true,cloudModel:'cloud:test',localModel:'local:test',budget:{tokenLimit:10000,dailyTokenLimit:50000,maximumTaskCostUsd:1,maximumDailyCostUsd:5},usage:{taskTokens:0,dailyTokens:0,taskCloudCostUsd:0,dailyCloudCostUsd:0},...overrides }; }
+test('complex work uses configured cloud budget',()=>assert.equal(routeModel(input()).provider,'cloud'));
+test('missing price fails closed to local',()=>{const v=routeModel(input({cloudRatePerMillionUsd:0}));assert.equal(v.provider,'local');assert.match(v.reason,/not configured/)});
+test('task and daily token limits block',()=>{assert.equal(routeModel(input({usage:{taskTokens:9501,dailyTokens:0,taskCloudCostUsd:0,dailyCloudCostUsd:0}})).allowed,false);assert.equal(routeModel(input({usage:{taskTokens:0,dailyTokens:49501,taskCloudCostUsd:0,dailyCloudCostUsd:0}})).allowed,false)});
+test('private and simple work stay local',()=>{assert.equal(routeModel(input({privacySensitive:true})).provider,'local');assert.equal(routeModel(input({complexity:'simple'})).provider,'local')});
+test('exhausted cost falls back local',()=>assert.equal(routeModel(input({usage:{taskTokens:0,dailyTokens:0,taskCloudCostUsd:1,dailyCloudCostUsd:5}})).provider,'local'));
+test('no affordable provider blocks',()=>assert.equal(routeModel(input({cloudRatePerMillionUsd:0,localAvailable:false})).allowed,false));
+test('prohibited never routes',()=>assert.equal(routeModel(input({risk:'prohibited'})).allowed,false));
+test('UTC day is deterministic',()=>assert.equal(utcDayStart(new Date('2026-08-10T23:59:00-05:00')).toISOString(),'2026-08-11T00:00:00.000Z'));

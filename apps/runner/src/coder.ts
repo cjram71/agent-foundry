@@ -79,7 +79,12 @@ export async function applyChanges(root: string, changes: Change[]) {
         else throw new Error('Exact edits require an existing file: ' + relative);
       }
       for (const edit of change.edits || []) {
-        if (edit.find === '' && content !== '') throw new Error('An empty find is allowed only when creating a new file: ' + relative);
+        if (edit.find === '' && content !== '') {
+          if (change.edits?.length !== 1) throw new Error('An empty find on an existing file must be the only edit: ' + relative);
+          const separator = content.endsWith('\n') || edit.replace.startsWith('\n') ? '' : '\n';
+          content += separator + edit.replace;
+          continue;
+        }
         const first = content.indexOf(edit.find);
         if (first < 0) throw new Error('Exact edit text was not found in ' + relative);
         if (edit.find && content.indexOf(edit.find, first + edit.find.length) >= 0) throw new Error('Exact edit text is ambiguous in ' + relative);

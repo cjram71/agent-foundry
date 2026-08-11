@@ -99,6 +99,16 @@ test('transitions: legacy operational edges used by current control points exist
   for (const [from, to] of edges) assert.ok(isValidTransition(from, to), `operational edge ${from} -> ${to} missing`);
 });
 
+test('transitions: every active execution state can be recovered after infrastructure loss', () => {
+  for (const state of ['RUNNING', 'VALIDATING', 'REPAIRING', 'REVIEWING'] as const) {
+    assert.equal(
+      isValidTransition(state, 'INFRASTRUCTURE_FAILED'),
+      true,
+      `${state} must be recoverable by the wedge sweeper`,
+    );
+  }
+});
+
 // ---------- legacy mapping ----------
 
 test('legacy map: every state has a legacy status and vice versa', () => {

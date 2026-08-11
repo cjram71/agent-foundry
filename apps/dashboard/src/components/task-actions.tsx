@@ -58,6 +58,7 @@ export default function TaskActions({ taskId, status, state }: { taskId: string;
     : 'The task history and current state are shown below.';
 
   return <div className="action-bar"><div><strong>Next action</strong><small>{help}</small></div><div className="action-buttons">
+    <a className="button secondary" href={`/tasks/${taskId}/results`}>Results &amp; run log</a>
     {(status === 'draft' || status === 'failed') && <button disabled={busy} className="button primary" onClick={() => act('request_plan')}>{status === 'failed' ? 'Start fresh plan' : 'Request plan'}</button>}
     {activeStatuses.has(status) && <span className={`badge status-${status}`}>{status.replaceAll('_', ' ')}…</span>}
     {repositoryStatuses.has(status) && <button disabled={busy} className="button secondary" onClick={() => act('check_status')}>Check status</button>}

@@ -55,103 +55,204 @@ enum TaskState {
   COMPLETED
 }
 
+enum AgentLifecycleStatus {
+  EXPERIMENTAL
+  STAGING
+  ACTIVE
+  RETIRED
+}
+
+enum MemoryKind {
+  WORKING
+  CONVERSATION
+  SEMANTIC
+  STRUCTURED
+  ARTIFACT
+  OPERATIONAL
+}
+
+enum MemoryStatus {
+  CANDIDATE
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum ProjectRunStatus {
+  RUNNING
+  READY_FOR_REVIEW
+  COMPLETED
+  PAUSED
+  FAILED
+  CANCELLED
+}
+
+model AgentDefinition {
+  id        String         @id
+  name      String
+  mission   String
+  owner     String         @default("gizmo")
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  versions  AgentVersion[]
+}
+
+model AgentVersion {
+  id          String               @id @default(uuid())
+  agentId     String
+  agent       AgentDefinition      @relation(fields: [agentId], references: [id], onDelete: Restrict)
+  version     String
+  status      AgentLifecycleStatus @default(EXPERIMENTAL)
+  manifest    Json
+  checksum    String
+  createdBy   String
+  createdAt   DateTime             @default(now())
+  activatedAt DateTime?
+  retiredAt   DateTime?
+
+  @@unique([agentId, version])
+  @@index([agentId, status])
+  @@index([status])
+}
+
 model User {
-  id            String    @id @default(uuid())
-  email         String    @unique
-  passwordHash  String
-  role          Role      @default(OPERATOR)
-  createdAt     DateTime  @default(now())
-  lastLoginAt   DateTime?
-  sessions      Session[]
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String
+  role         Role      @default(OPERATOR)
+  createdAt    DateTime  @default(now())
+  lastLoginAt  DateTime?
+  sessions     Session[]
 }
 
 model Session {
-  id          String    @id @default(uuid())
-  userId      String
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt   DateTime  @default(now())
-  expiresAt   DateTime
-  lastSeenAt  DateTime  @default(now())
-  ip          String?
-  userAgent   String?
-  revokedAt   DateTime?
+  id         String    @id @default(uuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime
+  lastSeenAt DateTime  @default(now())
+  ip         String?
+  userAgent  String?
+  revokedAt  DateTime?
 
   @@index([userId])
   @@index([expiresAt])
 }
 
 model Project {
-  id                 String    @id @default(uuid())
-  name               String
-  githubOwner        String
-  githubRepo         String
-  defaultBranch      String    @default("main")
-  projectType        String    @default("web_app")
-  productionUrl      String?
-  vercelProjectRef   String?
-  vercelTeamRef      String?
-  authorisedStatus   Boolean   @default(false)
-  spendingLimit      Float     @default(50.00)
-  createdAt          DateTime  @default(now())
-  tasks              Task[]
-  policies           ProjectPolicy[]
+  id               String          @id @default(uuid())
+  name             String
+  githubOwner      String
+  githubRepo       String
+  defaultBranch    String          @default("main")
+  projectType      String          @default("web_app")
+  productionUrl    String?
+  vercelProjectRef String?
+  vercelTeamRef    String?
+  authorisedStatus Boolean         @default(false)
+  spendingLimit    Float           @default(50.00)
+  createdAt        DateTime        @default(now())
+  tasks            Task[]
+  policies         ProjectPolicy[]
+  memories         MemoryRecord[]
+  runs             ProjectRun[]
+}
+
+model ProjectRun {
+  id                  String           @id @default(uuid())
+  projectId           String
+  project             Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  policyVersion       Int
+  status              ProjectRunStatus @default(RUNNING)
+  objective           String
+  report              Json?
+  recommendations     Json?
+  tasksTotal          Int              @default(0)
+  tasksCompleted      Int              @default(0)
+  tasksFailed         Int              @default(0)
+  estimatedCost       Float            @default(0)
+  startedBy           String
+  startedAt           DateTime         @default(now())
+  finishedAt          DateTime?
+  executionApprovedAt DateTime?
+  approvedBy          String?
+  updatedAt           DateTime         @updatedAt
+  tasks               Task[]
+
+  @@index([projectId, status])
+  @@index([startedAt])
+  @@index([status, executionApprovedAt])
 }
 
 model ProjectPolicy {
-  id                   String   @id @default(uuid())
-  projectId            String
-  project              Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  version              Int
-  active               Boolean  @default(false)
-  maxTaskRisk          String   @default("high") // 'low', 'medium', 'high' — prohibited is never a settable ceiling
-  requirePlanApproval  Boolean  @default(true)
-  requireMergeApproval Boolean  @default(true)
-  createdBy            String
-  createdAt            DateTime @default(now())
+  id                      String   @id @default(uuid())
+  projectId               String
+  project                 Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  version                 Int
+  active                  Boolean  @default(false)
+  maxTaskRisk             String   @default("high") // 'low', 'medium', 'high' — prohibited is never a settable ceiling
+  requirePlanApproval     Boolean  @default(true)
+  requireMergeApproval    Boolean  @default(true)
+  autonomousMode          Boolean  @default(false)
+  autoApproveMaxRisk      String   @default("medium")
+  maxParallelTasks        Int      @default(2)
+  maxRepairAttempts       Int      @default(2)
+  maxTasksPerRun          Int      @default(20)
+  maxTaskCost             Float    @default(2.0)
+  maxProjectRunCost       Float    @default(20.0)
+  createDraftPullRequests Boolean  @default(true)
+  createdBy               String
+  createdAt               DateTime @default(now())
 
   @@unique([projectId, version])
   @@index([projectId, active])
 }
 
 model Task {
-  id                 String       @id @default(uuid())
-  projectId          String
-  project            Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  title              String
+  id                  String                @id @default(uuid())
+  projectId           String
+  project             Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title               String
   completeInstruction String
-  status             TaskStatus   @default(draft)
-  state              TaskState    @default(DRAFT)
-  riskLevel          String       @default("medium")
-  assignedAgent      String?
-  branchName         String?
-  pullRequestUrl     String?
-  previewUrl         String?
-  tokenUsage         Int          @default(0)
-  estimatedCost      Float        @default(0.0)
-  currentAttemptId   String?
-  createdAt          DateTime     @default(now())
-  updatedAt          DateTime     @updatedAt
-  startedAt          DateTime?
-  completedAt        DateTime?
-  agentRuns          AgentRun[]
-  approvals          Approval[]
-  attempts           TaskAttempt[]
-  stateTransitions   TaskStateTransition[]
-  events             TaskEvent[]
+  status              TaskStatus            @default(draft)
+  state               TaskState             @default(DRAFT)
+  riskLevel           String                @default("medium")
+  assignedAgent       String?
+  branchName          String?
+  pullRequestUrl      String?
+  previewUrl          String?
+  tokenUsage          Int                   @default(0)
+  estimatedCost       Float                 @default(0.0)
+  currentAttemptId    String?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  startedAt           DateTime?
+  completedAt         DateTime?
+  agentRuns           AgentRun[]
+  approvals           Approval[]
+  attempts            TaskAttempt[]
+  stateTransitions    TaskStateTransition[]
+  events              TaskEvent[]
+  memories            MemoryRecord[]
+  projectRunId        String?
+  projectRun          ProjectRun?           @relation(fields: [projectRunId], references: [id], onDelete: SetNull)
+
+  @@index([projectRunId, state])
 }
 
 model TaskAttempt {
-  id             String    @id @default(uuid())
+  id             String                @id @default(uuid())
   taskId         String
-  task           Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  task           Task                  @relation(fields: [taskId], references: [id], onDelete: Cascade)
   attemptNumber  Int
-  status         String    @default("running")
+  status         String                @default("running")
   correlationId  String
   workspacePath  String?
   branchName     String?
   commitSha      String?
   outcomeSummary String?
-  startedAt      DateTime  @default(now())
+  startedAt      DateTime              @default(now())
   endedAt        DateTime?
   transitions    TaskStateTransition[]
   events         TaskEvent[]
@@ -173,7 +274,7 @@ model TaskStateTransition {
   reason        String?
   correlationId String?
   metadata      Json?
-  createdAt     DateTime    @default(now())
+  createdAt     DateTime     @default(now())
 
   @@index([taskId])
   @@index([correlationId])
@@ -227,30 +328,69 @@ model TaskEvent {
 }
 
 model AgentRun {
-  id            String    @id @default(uuid())
+  id            String   @id @default(uuid())
   taskId        String
-  task          Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  task          Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
   provider      String
   model         String
   role          String
   promptHash    String
   status        String
-  tokenUsage    Int       @default(0)
+  tokenUsage    Int      @default(0)
   outputSummary String?
   errorInfo     String?
-  createdAt     DateTime  @default(now())
+  createdAt     DateTime @default(now())
 }
 
 model Approval {
-  id            String    @id @default(uuid())
-  taskId        String
-  task          Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  approvalType  String    // 'plan', 'merge', 'infrastructure'
-  requestedAt   DateTime  @default(now())
-  approvedBy    String?
-  approvedAt    DateTime?
-  decision      String    @default("pending") // 'pending', 'approved', 'rejected'
-  comments      String?
+  id           String    @id @default(uuid())
+  taskId       String
+  task         Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  approvalType String // 'plan', 'merge', 'infrastructure'
+  requestedAt  DateTime  @default(now())
+  approvedBy   String?
+  approvedAt   DateTime?
+  decision     String    @default("pending") // 'pending', 'approved', 'rejected'
+  comments     String?
+}
+
+model MemoryRecord {
+  id             String          @id @default(uuid())
+  kind           MemoryKind
+  status         MemoryStatus    @default(CANDIDATE)
+  agentId        String
+  taskId         String?
+  task           Task?           @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  projectId      String?
+  project        Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  scopeType      String
+  scopeId        String
+  summary        String
+  content        Json?
+  contentHash    String
+  provenance     String
+  sensitivity    String          @default("INTERNAL")
+  retentionUntil DateTime
+  approvedBy     String?
+  artifact       ArtifactRecord?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@unique([contentHash, scopeType, scopeId])
+  @@index([scopeType, scopeId, status])
+  @@index([agentId, kind])
+  @@index([retentionUntil])
+}
+
+model ArtifactRecord {
+  id             String       @id @default(uuid())
+  memoryRecordId String       @unique
+  memoryRecord   MemoryRecord @relation(fields: [memoryRecordId], references: [id], onDelete: Cascade)
+  relativePath   String       @unique
+  mimeType       String?
+  sizeBytes      Int
+  checksum       String
+  createdAt      DateTime     @default(now())
 }
 
 model AuditEvent {

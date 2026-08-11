@@ -9,27 +9,10 @@ import { parseManagerPlan, buildTaskDrafts } from '@foundry/manager';
 import { loadActivePolicy } from '@/lib/policy';
 import { parseChangeRequestNote } from '@/lib/change-request';
 import { checkSpendGuard } from '@/lib/cost';
-import { sandboxSlugForTask, parseContainerNames } from '@/lib/cancel-sandbox';
 import { planJobId, executeJobId } from '@/lib/queue-policy';
 type PullRequestStatus = { state: string; mergedAt: string | null; isDraft: boolean; statusCheckRollup: Array<{ status?: string; conclusion?: string; state?: string }> };
 function runGitHub(args: string[]): Promise<string> { return new Promise((resolve,reject)=>{const child=spawn('gh',args,{shell:false,windowsHide:true,env:{...process.env,GH_PROMPT_DISABLED:'1'},stdio:['ignore','pipe','pipe'],timeout:30000});let stdout='',stderr='';child.stdout.on('data',c=>stdout+=c.toString());child.stderr.on('data',c=>stderr+=c.toString());child.on('error',reject);child.on('close',code=>code===0?resolve(stdout):reject(new Error(stderr.slice(0,500))));}); }
 async function readPullRequestStatus(url:string,owner:string,repo:string){const match=/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)$/.exec(url);if(!match||match[1].toLowerCase()!==owner.toLowerCase()||match[2].toLowerCase()!==repo.toLowerCase())throw new Error('PR repository mismatch');const output=await runGitHub(['pr','view',match[3],'--repo',`${owner}/${repo}`,'--json','state,mergedAt,isDraft,statusCheckRollup']);const pr=JSON.parse(output) as PullRequestStatus;const checks=pr.statusCheckRollup||[];const failed=checks.filter(c=>['FAILURE','ERROR','CANCELLED','TIMED_OUT','ACTION_REQUIRED'].includes(c.conclusion||c.state||'')).length;const pending=checks.filter(c=>['QUEUED','IN_PROGRESS','PENDING','EXPECTED'].includes(c.status||c.state||'')).length;return{state:pr.state,mergedAt:pr.mergedAt,isDraft:pr.isDraft,checks:{total:checks.length,failed,pending,passed:Math.max(0,checks.length-failed-pending)}};}
-
-/** P14: best-effort kill of the task's live sandbox containers (the state
- *  machine is already cancelled, so the runner's follow-up transitions
- *  reject; killing the containers stops the CPU spend now, not later).
- *  Dashboard and runner share the host in the beta deployment model. */
-function runDocker(args: string[]): Promise<string> { return new Promise((resolve,reject)=>{const child=spawn('docker',args,{shell:false,windowsHide:true,stdio:['ignore','pipe','pipe'],timeout:10000});let stdout='',stderr='';child.stdout.on('data',c=>stdout+=c.toString());child.stderr.on('data',c=>stderr+=c.toString());child.on('error',reject);child.on('close',code=>code===0?resolve(stdout):reject(new Error(stderr.slice(0,300))));}); }
-async function killTaskSandboxes(taskId: string): Promise<number> {
-  const slug = sandboxSlugForTask(taskId);
-  try {
-    const listed = await runDocker(['ps', '--format', '{{.Names}}', '--filter', `name=foundry-sandbox-${slug}-`]);
-    const names = parseContainerNames(listed, slug);
-    let killed = 0;
-    for (const name of names) { await runDocker(['rm', '-f', name]).catch(() => ''); killed += 1; }
-    return killed;
-  } catch { return 0; }
-}
 
 async function authorize(request: Request) {
   const session = await getSession();
@@ -69,14 +52,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       await tx.auditEvent.create({ data: { actor: auth.session!.userId, action: 'task.cancelled', target: id, result: 'success', metadata: { previousState: current.state } } });
     });
     // Best-effort aftermath, deliberately OUTSIDE the atomic state change:
-    // drop any still-queued BullMQ jobs (queued delivery) and kill live
-    // sandbox containers (mid-flight execution). Race outcomes are safe:
-    // a worker that starts anyway hits the CANCELLED state and self-skips.
+    // drop any still-queued BullMQ jobs. Active sandbox cleanup is delegated
+    // to the restricted Runner
+    // broker; the dashboard intentionally has no Docker control.
     let removedJobs = 0;
     try { removedJobs += await getTaskQueue().remove(planJobId(id)); } catch { /* queue absent */ }
     try { removedJobs += await getExecutionQueue().remove(executeJobId(id)); } catch { /* queue absent */ }
-    const killedContainers = await killTaskSandboxes(id);
-    return NextResponse.json({ message: `Task cancelled.${removedJobs ? ` Removed ${removedJobs} queued job(s).` : ''}${killedContainers ? ` Stopped ${killedContainers} sandbox container(s).` : ''}` });
+    return NextResponse.json({ message: `Task cancelled.${removedJobs ? ` Removed ${removedJobs} queued job(s).` : ''} Active sandbox cleanup is handled by the Runner boundary.` });
   }
 
   if (body.action === 'request_plan') {

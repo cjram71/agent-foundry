@@ -101,6 +101,26 @@ test('applyChanges writes files 0600 under the workspace', () => withTempDir(asy
   assert.equal(stat.mode & 0o777, 0o600, 'agent-written files stay private to the workspace owner');
 }));
 
+test('applyChanges treats one empty find on an existing file as an append', () => withTempDir(async (root) => {
+  const readme = path.join(root, 'README.md');
+  await fs.writeFile(readme, '# Existing');
+  await applyChanges(root, [{ path: 'README.md', edits: [{ find: '', replace: 'E2E passed.\n' }], reason: 'append status' }]);
+  assert.equal(await fs.readFile(readme, 'utf8'), '# Existing\nE2E passed.\n');
+}));
+
+test('applyChanges rejects an empty find mixed with other edits', () => withTempDir(async (root) => {
+  const readme = path.join(root, 'README.md');
+  await fs.writeFile(readme, '# Existing\n');
+  await assert.rejects(
+    () => applyChanges(root, [{ path: 'README.md', edits: [
+      { find: '', replace: 'append' },
+      { find: '# Existing', replace: '# Changed' },
+    ], reason: 'ambiguous append' }]),
+    /must be the only edit/,
+  );
+  assert.equal(await fs.readFile(readme, 'utf8'), '# Existing\n');
+}));
+
 test('applyChanges refuses to overwrite a symlink (escape defense, SecurityViolationError)', () => withTempDir(async (root) => {
   // Symlink inside the workspace pointing outside it — the classic
   // "write through a planted link" exfiltration primitive.

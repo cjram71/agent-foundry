@@ -1,0 +1,42 @@
+[
+  {
+    "id":"gizmo-orchestrator","name":"GIZMO Orchestrator","version":"1.0.0","status":"staging","mission":"Classify objectives and coordinate approved agents without direct host administration.",
+    "responsibilities":["classify intent and risk","select agents and models","enforce budgets and approvals","verify results and record task history"],
+    "models":{"primary":"cloud:reasoning","fallback":"local:ollama","permitted":["cloud:reasoning","local:ollama"]},
+    "permissions":{"filesystem":{"read":["/opt/gizmo_vps/config","/opt/gizmo_vps/data/agent-foundry/catalogs"],"write":[]},"network":["ollama.internal","approved-model-api"],"tools":{"allow":["health-check","query-memory"],"approvalRequired":[],"deny":["unrestricted-root-shell","docker-socket","disable-audit-logs","self-approve-privilege"]},"databases":{"read":["tasks","agent-registry","memory"],"write":["tasks","agent-runs","audit-events"]}},
+    "memory":{"read":["working","conversation","semantic","structured","operational"],"write":["working","structured","operational"]},"budget":{"maximumTaskCostUsd":5,"maximumDailyCostUsd":25,"tokenLimit":120000,"retries":2},
+    "risk":{"classification":"yellow","approvalRequired":false,"escalationRules":["escalate every red tool request","reject every black tool request","pause when daily budget is exhausted"]},"evaluation":{"requiredTests":["intent-routing","risk-classification","budget-enforcement","approval-enforcement"]},"logging":{"enabled":true}
+  },
+  {
+    "id":"developer","name":"Developer Agent","version":"1.0.0","status":"staging","mission":"Write, review, and test software only inside authorized task workspaces.",
+    "responsibilities":["implement scoped code changes","run deterministic tests","perform code review","prepare task-specific Git commits"],
+    "models":{"primary":"cloud:coding","fallback":"local:ollama","permitted":["cloud:coding","local:ollama"]},
+    "permissions":{"filesystem":{"read":["/opt/gizmo_vps/data/agent-foundry/workspaces"],"write":["/opt/gizmo_vps/data/agent-foundry/workspaces"]},"network":["github.com"],"tools":{"allow":["run-tests","write-workspace","git-branch-commit","query-memory"],"approvalRequired":[],"deny":["unrestricted-root-shell","docker-socket","disable-audit-logs","self-approve-privilege"]},"databases":{"read":["tasks","project-policies"],"write":["agent-runs","task-events"]}},
+    "memory":{"read":["working","structured"],"write":["working","artifact"]},"budget":{"maximumTaskCostUsd":8,"maximumDailyCostUsd":40,"tokenLimit":180000,"retries":2},
+    "risk":{"classification":"yellow","approvalRequired":false,"escalationRules":["require plan approval before execution","require human approval before merge","block protected-file changes"]},"evaluation":{"requiredTests":["sandbox-isolation","command-injection","protected-files","test-execution"]},"logging":{"enabled":true}
+  },
+  {
+    "id":"devops","name":"DevOps Agent","version":"1.0.0","status":"staging","mission":"Inspect and maintain approved infrastructure through bounded operational tools.",
+    "responsibilities":["inspect health and redacted logs","diagnose resource pressure","restart allow-listed services","propose production changes for approval"],
+    "models":{"primary":"cloud:reasoning","fallback":"local:ollama","permitted":["cloud:reasoning","local:ollama"]},
+    "permissions":{"filesystem":{"read":["/opt/gizmo_vps/logs","/opt/gizmo_vps/docs"],"write":[]},"network":[],"tools":{"allow":["health-check","read-logs","restart-approved-service"],"approvalRequired":["deploy-production","modify-firewall","rotate-secret","delete-volume"],"deny":["unrestricted-root-shell","docker-socket","disable-audit-logs","self-approve-privilege"]},"databases":{"read":["audit-events","operational-memory"],"write":["operational-memory"]}},
+    "memory":{"read":["working","operational"],"write":["operational"]},"budget":{"maximumTaskCostUsd":3,"maximumDailyCostUsd":15,"tokenLimit":80000,"retries":1},
+    "risk":{"classification":"red","approvalRequired":true,"escalationRules":["require approval for every red tool","never alter authentication automatically","never delete persistent data automatically"]},"evaluation":{"requiredTests":["tool-allowlist","red-approval","secret-redaction","audit-attribution"]},"logging":{"enabled":true}
+  },
+  {
+    "id":"research","name":"Research Agent","version":"1.0.0","status":"staging","mission":"Collect, validate, and summarize information from approved sources.",
+    "responsibilities":["gather source material","cross-check claims","summarize with provenance","store only approved durable knowledge"],
+    "models":{"primary":"cloud:reasoning","fallback":"local:ollama","permitted":["cloud:reasoning","local:ollama"]},
+    "permissions":{"filesystem":{"read":[],"write":[]},"network":["approved-research-proxy"],"tools":{"allow":["query-memory"],"approvalRequired":[],"deny":["unrestricted-root-shell","docker-socket","disable-audit-logs","self-approve-privilege"]},"databases":{"read":["semantic-memory","structured-memory"],"write":["memory-candidates"]}},
+    "memory":{"read":["working","semantic","structured"],"write":["working"]},"budget":{"maximumTaskCostUsd":4,"maximumDailyCostUsd":20,"tokenLimit":100000,"retries":2},
+    "risk":{"classification":"green","approvalRequired":false,"escalationRules":["escalate requests for restricted sources","never persist secrets or unverified claims"]},"evaluation":{"requiredTests":["source-provenance","claim-validation","memory-filter"]},"logging":{"enabled":true}
+  },
+  {
+    "id":"writer","name":"Writer Agent","version":"1.0.0","status":"staging","mission":"Create drafts using approved context, brand rules, and publication gates.",
+    "responsibilities":["draft written content","apply brand guidance","identify unsupported claims","submit publication-ready artifacts for review"],
+    "models":{"primary":"cloud:reasoning","fallback":"local:ollama","permitted":["cloud:reasoning","local:ollama"]},
+    "permissions":{"filesystem":{"read":["/opt/gizmo_vps/data/agent-foundry/workspaces"],"write":["/opt/gizmo_vps/data/agent-foundry/workspaces"]},"network":[],"tools":{"allow":["query-memory","write-workspace"],"approvalRequired":[],"deny":["unrestricted-root-shell","docker-socket","disable-audit-logs","self-approve-privilege"]},"databases":{"read":["structured-memory"],"write":["artifact-memory"]}},
+    "memory":{"read":["working","structured"],"write":["working","artifact"]},"budget":{"maximumTaskCostUsd":3,"maximumDailyCostUsd":15,"tokenLimit":90000,"retries":1},
+    "risk":{"classification":"green","approvalRequired":false,"escalationRules":["require human approval before publishing","flag claims without approved evidence"]},"evaluation":{"requiredTests":["brand-compliance","claim-grounding","publication-gate"]},"logging":{"enabled":true}
+  }
+]
