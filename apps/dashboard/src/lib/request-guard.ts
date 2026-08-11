@@ -20,20 +20,19 @@ export function isPublicApi(pathname: string): boolean {
 
 /**
  * Decision matrix enforced by proxy.ts for every matched request:
- *  - /api/auth/* is always reachable (login must be callable unauthenticated),
+ *  - /login and /api/auth/* are always reachable so a stale, revoked
+ *    database session cannot create a /login <-> / redirect loop,
  *  - unauthenticated page/API requests are redirected to /login (pages) or
  *    answered 401 (APIs, so first-party fetch receives JSON instead of HTML),
- *  - authenticated users hitting /login are sent to /,
- *  - everything else is allowed.
+ *  - everything else with a valid JWT is allowed; authoritative session
+ *    revocation remains enforced by getSession() in the Node layer.
  */
 export function decideRequest(pathname: string, authenticated: boolean): GuardVerdict {
-  if (isPublicApi(pathname)) return { action: 'allow' };
+  if (isAuthPage(pathname) || isPublicApi(pathname)) return { action: 'allow' };
   const isApi = pathname.startsWith('/api/');
   if (!authenticated) {
-    if (isAuthPage(pathname)) return { action: 'allow' };
     if (isApi) return { action: 'reject', status: 401 };
     return { action: 'redirect', location: '/login' };
   }
-  if (isAuthPage(pathname)) return { action: 'redirect', location: '/' };
   return { action: 'allow' };
 }
