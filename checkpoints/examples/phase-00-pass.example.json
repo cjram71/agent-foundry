@@ -1,0 +1,26 @@
+{
+  "phaseId": "phase-00",
+  "phaseName": "Baseline & Restore Proof",
+  "status": "PASS",
+  "gitSha": "452e4dd2a5c2fa5ac0c3555cdbb9ec2d7638f0f6",
+  "hostId": "example-vps",
+  "builder": "codex",
+  "startedAt": "2026-08-11T10:00:00Z",
+  "completedAt": "2026-08-11T10:30:00Z",
+  "scope": ["read-only VPS audit"],
+  "checks": [
+    {"id":"git-state-recorded","mandatory":true,"result":"PASS","evidenceRef":"docs/baselines/example.md","summary":"Git state captured"},
+    {"id":"service-inventory-recorded","mandatory":true,"result":"PASS","evidenceRef":"docs/baselines/example.md","summary":"Services captured"},
+    {"id":"backup-state-recorded","mandatory":true,"result":"PASS","evidenceRef":"docs/baselines/example.md","summary":"Backup state captured"}
+  ],
+  "humanApproval": {
+    "required": true,
+    "status": "APPROVED",
+    "approvedBy": "owner",
+    "approvedAt": "2026-08-11T10:35:00Z"
+  },
+  "rollbackReady": true,
+  "rollbackRef": "Phase 0 is read-only; no mutation rollback required",
+  "artifacts": ["docs/baselines/example.md"],
+  "notes": "Example only. Runtime checkpoints must contain real evidence and current Git SHA."
+}
