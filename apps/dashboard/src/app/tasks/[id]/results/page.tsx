@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
+import { getSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
 function label(value: string) {
@@ -15,6 +16,9 @@ function payloadSummary(payload: unknown) {
 }
 
 export default async function TaskResults({ params }: { params: Promise<{ id: string }> }) {
+  const session = await getSession();
+  if (!session) redirect('/login');
+
   const { id } = await params;
   const task = await prisma.task.findUnique({
     where: { id },
