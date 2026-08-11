@@ -1,0 +1,13 @@
+CREATE TYPE "MemoryKind" AS ENUM ('WORKING', 'CONVERSATION', 'SEMANTIC', 'STRUCTURED', 'ARTIFACT', 'OPERATIONAL');
+CREATE TYPE "MemoryStatus" AS ENUM ('CANDIDATE', 'APPROVED', 'REJECTED', 'EXPIRED');
+CREATE TABLE "MemoryRecord" ("id" TEXT NOT NULL,"kind" "MemoryKind" NOT NULL,"status" "MemoryStatus" NOT NULL DEFAULT 'CANDIDATE',"agentId" TEXT NOT NULL,"taskId" TEXT,"projectId" TEXT,"scopeType" TEXT NOT NULL,"scopeId" TEXT NOT NULL,"summary" TEXT NOT NULL,"content" JSONB,"contentHash" TEXT NOT NULL,"provenance" TEXT NOT NULL,"sensitivity" TEXT NOT NULL DEFAULT 'INTERNAL',"retentionUntil" TIMESTAMP(3) NOT NULL,"approvedBy" TEXT,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,CONSTRAINT "MemoryRecord_pkey" PRIMARY KEY ("id"));
+CREATE UNIQUE INDEX "MemoryRecord_contentHash_scopeType_scopeId_key" ON "MemoryRecord"("contentHash", "scopeType", "scopeId");
+CREATE INDEX "MemoryRecord_scopeType_scopeId_status_idx" ON "MemoryRecord"("scopeType", "scopeId", "status");
+CREATE INDEX "MemoryRecord_agentId_kind_idx" ON "MemoryRecord"("agentId", "kind");
+CREATE INDEX "MemoryRecord_retentionUntil_idx" ON "MemoryRecord"("retentionUntil");
+ALTER TABLE "MemoryRecord" ADD CONSTRAINT "MemoryRecord_taskId_fkey" FOREIGN KEY ("taskId") REFERENCES "Task"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "MemoryRecord" ADD CONSTRAINT "MemoryRecord_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+CREATE TABLE "ArtifactRecord" ("id" TEXT NOT NULL,"memoryRecordId" TEXT NOT NULL,"relativePath" TEXT NOT NULL,"mimeType" TEXT,"sizeBytes" INTEGER NOT NULL,"checksum" TEXT NOT NULL,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,CONSTRAINT "ArtifactRecord_pkey" PRIMARY KEY ("id"));
+CREATE UNIQUE INDEX "ArtifactRecord_memoryRecordId_key" ON "ArtifactRecord"("memoryRecordId");
+CREATE UNIQUE INDEX "ArtifactRecord_relativePath_key" ON "ArtifactRecord"("relativePath");
+ALTER TABLE "ArtifactRecord" ADD CONSTRAINT "ArtifactRecord_memoryRecordId_fkey" FOREIGN KEY ("memoryRecordId") REFERENCES "MemoryRecord"("id") ON DELETE CASCADE ON UPDATE CASCADE;

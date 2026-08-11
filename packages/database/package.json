@@ -13,7 +13,7 @@
     "@types/node": "^26.1.2",
     "prisma": "^6.19.3",
     "ts-node": "^10.9.2",
-    "typescript": "^7.0.2"
+    "typescript": "5.9.3"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

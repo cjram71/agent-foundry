@@ -13,12 +13,15 @@ const globalForQueue = globalThis as unknown as { foundryQueue?: Queue; executio
 
 function connection() {
   if (!globalForQueue.foundryRedis) {
-    globalForQueue.foundryRedis = new IORedis({
-      host: '127.0.0.1', port: 6379,
-      password: process.env.REDIS_PASSWORD || undefined,
-      maxRetriesPerRequest: null,
-      enableReadyCheck: false,
-    });
+    const common = { maxRetriesPerRequest: null, enableReadyCheck: false };
+    globalForQueue.foundryRedis = process.env.REDIS_URL
+      ? new IORedis(process.env.REDIS_URL, common)
+      : new IORedis({
+          host: process.env.REDIS_HOST || '127.0.0.1',
+          port: Number(process.env.REDIS_PORT || 6379),
+          password: process.env.REDIS_PASSWORD || undefined,
+          ...common,
+        });
   }
   return globalForQueue.foundryRedis;
 }

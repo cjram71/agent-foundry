@@ -1,0 +1,10 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { evaluateMemoryWrite, QdrantMemoryAdapter, SEMANTIC_COLLECTION } from "./index";
+const base = { kind: "STRUCTURED" as const, agentId: "developer", scopeType: "TASK" as const, scopeId: "t1", summary: "Build passed", provenance: "task:t1" };
+test("allows bounded structured memory", () => { const result = evaluateMemoryWrite(base); assert.equal(result.decision, "ALLOW"); assert.equal(result.contentHash?.length, 64); });
+test("rejects secrets", () => assert.equal(evaluateMemoryWrite({ ...base, content: { apiKey: "hidden" } }).decision, "REJECT"));
+test("requires explicit conversation persistence", () => assert.equal(evaluateMemoryWrite({ ...base, kind: "CONVERSATION" }).decision, "REQUIRE_APPROVAL"));
+test("requires explicit semantic persistence", () => assert.equal(evaluateMemoryWrite({ ...base, kind: "SEMANTIC" }).decision, "REQUIRE_APPROVAL"));
+test("caps retention", () => assert.equal(evaluateMemoryWrite({ ...base, retentionDays: 500 }).retentionDays, 365));
+test("uses versioned Qdrant collection", async () => { let url = ""; const fakeFetch = (async (input: string | URL | Request) => { url = String(input); return new Response("{}", { status: 200 }); }) as typeof fetch; const adapter = new QdrantMemoryAdapter("http://qdrant:6333", "test", fakeFetch); await adapter.upsert({ id: "p1", vector: [0.1], payload: { memoryRecordId: "m1", scopeType: "TASK", scopeId: "t1", agentId: "developer", contentHash: "a".repeat(64) } }); assert.match(url, new RegExp(SEMANTIC_COLLECTION)); });

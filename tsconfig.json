@@ -8,6 +8,15 @@
   "files": [],
   "references": [
     {
+      "path": "./packages/memory-policy"
+    },
+    {
+      "path": "./packages/agent-contracts"
+    },
+    {
+      "path": "./packages/model-router"
+    },
+    {
       "path": "./packages/cost"
     },
     {
@@ -27,6 +36,9 @@
     },
     {
       "path": "./packages/state-machine"
+    },
+    {
+      "path": "./apps/autonomy"
     },
     {
       "path": "./apps/orchestrator"
