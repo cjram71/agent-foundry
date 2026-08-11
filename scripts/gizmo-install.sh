@@ -66,8 +66,9 @@ JSON
 }
 
 phase00(){
+  bash "$REPO_ROOT/scripts/gizmo-validate-env.sh"
   bash "$REPO_ROOT/scripts/gizmo-preflight.sh"
-  write_checkpoint phase-00-preflight "VPS preflight" false
+  write_checkpoint phase-00-preflight "VPS and configuration preflight" false
 }
 phase01(){
   run_gate phase-00-preflight
@@ -78,7 +79,8 @@ phase02(){
   run_gate phase-01-backup
   bash "$REPO_ROOT/scripts/gizmo-bootstrap-knowledge.sh"
   bash "$REPO_ROOT/scripts/gizmo-install-catalogs.sh"
-  write_checkpoint phase-02-foundations "Knowledge vault and pinned catalogs" false
+  bash "$REPO_ROOT/scripts/gizmo-audit-n8n-catalog.sh"
+  write_checkpoint phase-02-foundations "Knowledge vault, pinned catalogs, and template audit" false
 }
 phase03(){
   run_gate phase-02-foundations
