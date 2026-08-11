@@ -11,6 +11,9 @@
       "path": "./packages/mission"
     },
     {
+      "path": "./packages/models"
+    },
+    {
       "path": "./packages/memory-policy"
     },
     {
