@@ -1,6 +1,0 @@
-{
-  "name": "@gizmo/mission",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Gizmo Mission Contracts, compilation and mission/task aggregation"
-}
