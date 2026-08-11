@@ -2,6 +2,7 @@ import { GoogleGenAI } from '@google/genai';
 import type { PrismaClient } from '@prisma/client';
 import { estimateUsd, parseRatePerMillion, RATE_ENV } from '@foundry/cost';
 import { routeModel, utcDayStart, type RouteDecision, type WorkRisk } from '@foundry/model-router';
+import { LiteLLMClient, isTransientModelError } from '@foundry/models';
 
 export type GenerationResult = { text: string; totalTokens: number; provider: string; model: string };
 export class ModelBudgetError extends Error {}
@@ -42,6 +43,20 @@ export async function generatePlannerResponse(prisma: PrismaClient, task: { id: 
   const decision = await decide(prisma, task);
   await prisma.auditEvent.create({ data: { actor: 'orchestrator', action: 'model.route_decided', target: task.id, result: decision.allowed ? 'success' : 'rejected', metadata: { role: 'planner', provider: decision.provider ?? null, model: decision.model ?? null, reason: decision.reason, projectedTaskTokens: decision.projectedTaskTokens, projectedDailyTokens: decision.projectedDailyTokens, projectedTaskCostUsd: decision.projectedTaskCostUsd, projectedDailyCostUsd: decision.projectedDailyCostUsd } } });
   if (!decision.allowed || !decision.provider || !decision.model) throw new ModelBudgetError(decision.reason);
+  if (process.env.LITELLM_PLANNER_ENABLED === 'true') {
+    const apiKey = process.env.LITELLM_MASTER_KEY;
+    if (!apiKey) throw new ModelBudgetError('LiteLLM planner canary enabled without LITELLM_MASTER_KEY.');
+    const client = new LiteLLMClient({ baseUrl: process.env.LITELLM_URL || 'http://127.0.0.1:4000', apiKey, models: { planner: process.env.LITELLM_PLANNER_MODEL || decision.model }, timeoutMs: positive(process.env.LITELLM_TIMEOUT_MS, 900_000) });
+    try {
+      const result = await client.generate({ role: 'planner', input: prompt, responseFormat: 'json' });
+      await prisma.auditEvent.create({ data: { actor: 'orchestrator', action: 'model.canary_succeeded', target: task.id, result: 'success', metadata: { role: 'planner', provider: result.provider, model: result.model, inputTokens: result.inputTokens || 0, outputTokens: result.outputTokens || 0, latencyMs: result.latencyMs || 0 } } });
+      return { text: result.text, totalTokens: (result.inputTokens || 0) + (result.outputTokens || 0), provider: result.provider, model: result.model };
+    } catch (error) {
+      const rollbackAllowed = process.env.LITELLM_DIRECT_ROLLBACK === 'true' && isTransientModelError(error);
+      await prisma.auditEvent.create({ data: { actor: 'orchestrator', action: 'model.canary_failed', target: task.id, result: rollbackAllowed ? 'rollback' : 'rejected', metadata: { role: 'planner', rollbackAllowed, errorClass: error instanceof Error ? error.constructor.name : 'unknown' } } });
+      if (!rollbackAllowed) throw error;
+    }
+  }
   if (decision.provider === 'local') return localGenerate(prompt, decision.model);
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new ModelBudgetError('Cloud route selected without configured credentials.');

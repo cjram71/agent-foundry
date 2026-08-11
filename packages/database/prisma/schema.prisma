@@ -157,6 +157,7 @@ model Project {
   policies         ProjectPolicy[]
   memories         MemoryRecord[]
   runs             ProjectRun[]
+  missions         Mission[]
 }
 
 model ProjectRun {
@@ -209,6 +210,81 @@ model ProjectPolicy {
   @@index([projectId, active])
 }
 
+model Mission {
+  id                String            @id @default(uuid())
+  version           Int               @default(1)
+  goal              String
+  contextSummary    String?
+  constraints       String[]
+  deliverables      String[]
+  definitionOfDone  String[]
+  failureConditions String[]
+  riskLevel         String
+  budgetUsd         Float
+  tokenBudget       Int
+  maxParallelTasks  Int
+  allowedToolClasses String[]
+  approvalRules     String[]
+  deadline          DateTime?
+  projectId         String?
+  project           Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  businessId        String?
+  provenance        String
+  status            String            @default("draft")
+  createdBy         String
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  tasks             MissionTask[]
+  approvals         MissionApproval[]
+  events            MissionEvent[]
+
+  @@index([projectId, status])
+  @@index([businessId, status])
+  @@index([createdAt])
+}
+
+model MissionTask {
+  id        String   @id @default(uuid())
+  missionId String
+  mission   Mission  @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  taskId    String   @unique
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  sequence  Int
+  createdAt DateTime @default(now())
+
+  @@unique([missionId, sequence])
+  @@index([missionId])
+}
+
+model MissionApproval {
+  id           String   @id @default(uuid())
+  missionId    String
+  mission      Mission  @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  approvalType String
+  decision     String   @default("pending")
+  requestedAt  DateTime @default(now())
+  decidedAt    DateTime?
+  decidedBy    String?
+  comments     String?
+
+  @@index([missionId, decision])
+}
+
+model MissionEvent {
+  id            String   @id @default(uuid())
+  missionId     String
+  mission       Mission  @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  type          String
+  actor         String
+  actorType     String   @default("system")
+  correlationId String?
+  payload       Json?
+  createdAt     DateTime @default(now())
+
+  @@index([missionId, createdAt])
+  @@index([correlationId])
+}
+
 model Task {
   id                  String                @id @default(uuid())
   projectId           String
@@ -235,6 +311,7 @@ model Task {
   stateTransitions    TaskStateTransition[]
   events              TaskEvent[]
   memories            MemoryRecord[]
+  missionLink         MissionTask?
   projectRunId        String?
   projectRun          ProjectRun?           @relation(fields: [projectRunId], references: [id], onDelete: SetNull)
 
@@ -363,14 +440,26 @@ model MemoryRecord {
   task           Task?           @relation(fields: [taskId], references: [id], onDelete: SetNull)
   projectId      String?
   project        Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  businessId     String?
+  sourceReference String?
   scopeType      String
   scopeId        String
   summary        String
   content        Json?
   contentHash    String
   provenance     String
+  source         String          @default("legacy")
+  confidence     Float?
+  trustLevel     String          @default("untrusted")
   sensitivity    String          @default("INTERNAL")
   retentionUntil DateTime
+  observedAt     DateTime?
+  reviewAt       DateTime?
+  expiresAt      DateTime?
+  embeddingModel String?
+  embeddingVersion String?
+  embedding      Unsupported("vector(1536)")?
+  searchVector   Unsupported("tsvector")?
   approvedBy     String?
   artifact       ArtifactRecord?
   createdAt      DateTime        @default(now())
@@ -380,6 +469,8 @@ model MemoryRecord {
   @@index([scopeType, scopeId, status])
   @@index([agentId, kind])
   @@index([retentionUntil])
+  @@index([projectId, trustLevel])
+  @@index([businessId, trustLevel])
 }
 
 model ArtifactRecord {

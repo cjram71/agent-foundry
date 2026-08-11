@@ -1,0 +1,1 @@
+Eval runtime certified by approved-baseline, mandatory-suite, regression, score, and independent-review gates, 3/3 tests, and forced monorepo build. See docs/runtime/EVALS_RUNTIME.md and /srv/gizmo/checkpoints/phase-10-evals-safety.json.

@@ -1,22 +1,13 @@
-export interface BusinessProcessProfile {
-  id: string;
-  businessId: string;
-  name: string;
-  frequency: number;
-  staffHoursPerPeriod?: number;
-  revenueImpact?: number;
-  errorRate?: number;
-  delayImpact?: number;
-  automationPotential: number;
-  aiAdvantage: number;
-  implementationComplexity: number;
-  securityPrivacyRisk: number;
-  recurringRevenuePotential: number;
+export interface BusinessProcessProfile{id:string;businessId:string;name:string;frequency:number;staffHoursPerPeriod?:number;revenueImpact?:number;errorRate?:number;delayImpact?:number;automationPotential:number;aiAdvantage:number;implementationComplexity:number;securityPrivacyRisk:number;recurringRevenuePotential:number;evidence:string[]}
+export interface OpportunityScore{processId:string;total:number;rationale:string[];recommendedNextStep:'ignore'|'research'|'pilot'|'productize'}
+const bounded=(name:string,value:number,max=10)=>{if(!Number.isFinite(value)||value<0||value>max)throw new Error(`${name} must be between 0 and ${max}`);return value};
+export function scoreOpportunity(profile:BusinessProcessProfile):OpportunityScore{
+ if(!profile.id.trim()||!profile.businessId.trim()||!profile.name.trim())throw new Error('Process identity is required');if(profile.evidence.length<2)throw new Error('At least two evidence references are required');
+ const frequency=bounded('frequency',profile.frequency,1000)/1000,automation=bounded('automationPotential',profile.automationPotential)/10,ai=bounded('aiAdvantage',profile.aiAdvantage)/10,complexity=bounded('implementationComplexity',profile.implementationComplexity)/10,risk=bounded('securityPrivacyRisk',profile.securityPrivacyRisk)/10,recurring=bounded('recurringRevenuePotential',profile.recurringRevenuePotential)/10;
+ const hours=Math.min(bounded('staffHoursPerPeriod',profile.staffHoursPerPeriod??0,10000)/100,1),errors=bounded('errorRate',profile.errorRate??0,1),revenue=Math.min(bounded('revenueImpact',profile.revenueImpact??0,1_000_000)/100000,1),delay=Math.min(bounded('delayImpact',profile.delayImpact??0,1000)/100,1);
+ const value=.12*frequency+.13*hours+.1*revenue+.08*errors+.07*delay+.18*automation+.12*ai+.1*recurring-.06*complexity-.14*risk;const total=Math.round(Math.max(0,Math.min(1,value))*100);
+ const rationale=[`automation potential ${profile.automationPotential}/10`,`AI advantage ${profile.aiAdvantage}/10`,`complexity ${profile.implementationComplexity}/10`,`security/privacy risk ${profile.securityPrivacyRisk}/10`,`evidence ${profile.evidence.length}`];
+ let recommendedNextStep:OpportunityScore['recommendedNextStep']=total<25?'ignore':total<50?'research':'pilot';if(total>=75&&risk<=.3&&profile.evidence.length>=3)recommendedNextStep='productize';
+ return{processId:profile.id,total,rationale,recommendedNextStep};
 }
-
-export interface OpportunityScore {
-  processId: string;
-  total: number;
-  rationale: string[];
-  recommendedNextStep: 'ignore' | 'research' | 'pilot' | 'productize';
-}
+export function authorizePilot(score:OpportunityScore,approved:boolean):'research-only'|'pilot-approved'{if(score.recommendedNextStep==='ignore')throw new Error('Opportunity does not justify a pilot');return approved?'pilot-approved':'research-only'}

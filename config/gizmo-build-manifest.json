@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "components": [
     {"id":"agent-foundry-core","kind":"application","status":"implemented","verify":"curl -fsS http://127.0.0.1:3000/api/health"},
-    {"id":"autonomy-controller","kind":"application","status":"implemented","verify":"pm2 describe foundry-autonomy >/dev/null"},
+    {"id":"autonomy-controller","kind":"application","status":"implemented","verify":"pgrep -f '/apps/autonomy/dist/worker.js$' >/dev/null"},
     {"id":"deterministic-model-router","kind":"application","status":"implemented","verify":"test -f packages/model-router/dist/index.js"},
     {"id":"memory-policy","kind":"application","status":"implemented","verify":"test -f packages/memory-policy/dist/index.js"},
     {"id":"agent-contracts","kind":"application","status":"implemented","verify":"test -f packages/agent-contracts/dist/index.js"},
@@ -10,7 +10,7 @@
     {"id":"redis","kind":"infrastructure","status":"implemented","verify":"docker ps --format '{{.Names}}' | grep -qx foundry_redis"},
     {"id":"n8n","kind":"infrastructure","status":"installable","verify":"curl -fsS http://127.0.0.1:5678/healthz"},
     {"id":"litellm","kind":"infrastructure","status":"installable","verify":"curl -fsS -H 'Authorization: Bearer $LITELLM_MASTER_KEY' http://127.0.0.1:4000/health/liveliness"},
-    {"id":"observability","kind":"infrastructure","status":"installable","verify":"curl -fsS http://127.0.0.1:9090/-/healthy && curl -fsS http://127.0.0.1:3001/api/health"},
+    {"id":"observability","kind":"infrastructure","status":"installable","verify":"curl -fsS http://127.0.0.1:9090/-/healthy && curl -fsS http://127.0.0.1:3002/api/health"},
     {"id":"workflow-template-catalog","kind":"catalog","status":"installable","verify":"test -d ${GIZMO_CATALOG_DIR:-/srv/gizmo/catalogs}/n8n/awesome-n8n-templates/.git"},
     {"id":"knowledge-vault","kind":"knowledge","status":"installable","verify":"test -d ${GIZMO_KNOWLEDGE_DIR:-/srv/gizmo/knowledge-vault}/10-Missions"},
     {"id":"mission-contract-runtime","kind":"application","status":"implementation-required","requiredMarker":"packages/mission/.gizmo-runtime-ready"},

@@ -1,0 +1,2 @@
+import{loadTodayDashboard}from'./aggregate';import{loadDatabaseToday}from'./database';import{loadQueues}from'./queues';import{loadServiceHealth}from'./services';import{loadAgents}from'./agents';import{PrometheusAdapter}from'./prometheus';
+export function loadLiveTodayDashboard(now=new Date()){return loadTodayDashboard(now,{database:loadDatabaseToday,queues:loadQueues,services:time=>loadServiceHealth(fetch,time),agents:loadAgents,host:()=>new PrometheusAdapter().host()})}

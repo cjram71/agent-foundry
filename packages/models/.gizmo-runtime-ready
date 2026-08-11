@@ -1,0 +1,1 @@
+Provider-neutral Model runtime certified by adapter tests, planner canary success/rollback integration tests, orchestrator regression tests, and monorepo build. See docs/runtime/MODEL_RUNTIME.md and /srv/gizmo/checkpoints/phase-03-model-runtime.json.

@@ -1,0 +1,1 @@
+Mission runtime certified by deterministic contract tests, Prisma schema validation, authenticated policy-bounded API tests, and monorepo build. See docs/runtime/MISSION_RUNTIME.md and /srv/gizmo/checkpoints/phase-02-mission-runtime.json.

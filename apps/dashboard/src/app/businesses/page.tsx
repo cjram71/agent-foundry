@@ -1,0 +1,2 @@
+import { requireDashboardAdmin } from '@/lib/dashboard/auth'; import { Empty, OpsPage } from '@/components/ops-shell'; export const dynamic='force-dynamic';
+export default async function Businesses(){await requireDashboardAdmin();return <OpsPage eyebrow="BUSINESS FOUNDRY" title="Businesses" description="Business operations and measured outcomes."><section className="panel"><Empty>Business Foundry is not configured for this deployment.</Empty></section></OpsPage>}
