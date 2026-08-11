@@ -23,7 +23,6 @@ foundry-repos/
 agent-catalogs/
 models/
 !packages/models/
-!packages/models/**
 ollama/
 *.sqlite
 *.db
