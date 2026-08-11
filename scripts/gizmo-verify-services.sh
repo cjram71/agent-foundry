@@ -4,7 +4,7 @@ set -euo pipefail
 check(){ local name=$1 url=$2; echo "Checking $name..."; curl -fsS --max-time 10 "$url" >/dev/null; }
 check n8n http://127.0.0.1:5678/healthz
 check prometheus http://127.0.0.1:9090/-/healthy
-check grafana http://127.0.0.1:3001/api/health
+check grafana http://127.0.0.1:3002/api/health
 check loki http://127.0.0.1:3100/ready
 check tempo http://127.0.0.1:3200/ready
 
