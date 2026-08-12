@@ -1,3 +1,4 @@
+export * from './economics.js';
 // @foundry/cost — deterministic cost accounting primitives (P14).
 // Pure functions only; each app owns its Prisma aggregate queries.
 

@@ -1,3 +1,4 @@
+export * from './governance.js';
 export type MissionRisk = 'low' | 'medium' | 'high';
 
 export interface MissionContract {

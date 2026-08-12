@@ -156,6 +156,8 @@ model Project {
   tasks            Task[]
   policies         ProjectPolicy[]
   memories         MemoryRecord[]
+  revenueStreams   RevenueStream[]
+  economicEvents   EconomicEvent[]
   runs             ProjectRun[]
   missions         Mission[]
 }
@@ -211,36 +213,52 @@ model ProjectPolicy {
 }
 
 model Mission {
-  id                String            @id @default(uuid())
-  version           Int               @default(1)
-  goal              String
-  contextSummary    String?
-  constraints       String[]
-  deliverables      String[]
-  definitionOfDone  String[]
-  failureConditions String[]
-  riskLevel         String
-  budgetUsd         Float
-  tokenBudget       Int
-  maxParallelTasks  Int
-  allowedToolClasses String[]
-  approvalRules     String[]
-  deadline          DateTime?
-  projectId         String?
-  project           Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  businessId        String?
-  provenance        String
-  status            String            @default("draft")
-  createdBy         String
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
-  tasks             MissionTask[]
-  approvals         MissionApproval[]
-  events            MissionEvent[]
+  id                   String            @id @default(uuid())
+  version              Int               @default(1)
+  goal                 String
+  contextSummary       String?
+  constraints          String[]
+  deliverables         String[]
+  definitionOfDone     String[]
+  failureConditions    String[]
+  riskLevel            String
+  budgetUsd            Float
+  tokenBudget          Int
+  maxParallelTasks     Int
+  allowedToolClasses   String[]
+  approvalRules        String[]
+  deadline             DateTime?
+  projectId            String?
+  project              Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  businessId           String?
+  provenance           String
+  status               String            @default("draft")
+  createdBy            String
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  charterId            String?
+  charterVersion       Int?
+  charter              FoundryCharter?   @relation(fields: [charterId], references: [id], onDelete: Restrict)
+  missionTemplateId    String?
+  missionTemplate      MissionTemplate?  @relation(fields: [missionTemplateId], references: [id], onDelete: SetNull)
+  revenueStreamId      String?
+  revenueStream        RevenueStream?    @relation(fields: [revenueStreamId], references: [id], onDelete: SetNull)
+  pricingModel         String?
+  revenueTargetMinor   BigInt?
+  economicStatus       String            @default("untracked")
+  measurementStartedAt DateTime?
+  measurementEndsAt    DateTime?
+  economicEvents       EconomicEvent[]
+  tasks                MissionTask[]
+  approvals            MissionApproval[]
+  events               MissionEvent[]
 
   @@index([projectId, status])
   @@index([businessId, status])
   @@index([createdAt])
+  @@index([charterId, charterVersion])
+  @@index([missionTemplateId])
+  @@index([revenueStreamId, economicStatus])
 }
 
 model MissionTask {
@@ -257,12 +275,12 @@ model MissionTask {
 }
 
 model MissionApproval {
-  id           String   @id @default(uuid())
+  id           String    @id @default(uuid())
   missionId    String
-  mission      Mission  @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  mission      Mission   @relation(fields: [missionId], references: [id], onDelete: Cascade)
   approvalType String
-  decision     String   @default("pending")
-  requestedAt  DateTime @default(now())
+  decision     String    @default("pending")
+  requestedAt  DateTime  @default(now())
   decidedAt    DateTime?
   decidedBy    String?
   comments     String?
@@ -432,38 +450,38 @@ model Approval {
 }
 
 model MemoryRecord {
-  id             String          @id @default(uuid())
-  kind           MemoryKind
-  status         MemoryStatus    @default(CANDIDATE)
-  agentId        String
-  taskId         String?
-  task           Task?           @relation(fields: [taskId], references: [id], onDelete: SetNull)
-  projectId      String?
-  project        Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  businessId     String?
-  sourceReference String?
-  scopeType      String
-  scopeId        String
-  summary        String
-  content        Json?
-  contentHash    String
-  provenance     String
-  source         String          @default("legacy")
-  confidence     Float?
-  trustLevel     String          @default("untrusted")
-  sensitivity    String          @default("INTERNAL")
-  retentionUntil DateTime
-  observedAt     DateTime?
-  reviewAt       DateTime?
-  expiresAt      DateTime?
-  embeddingModel String?
+  id               String                       @id @default(uuid())
+  kind             MemoryKind
+  status           MemoryStatus                 @default(CANDIDATE)
+  agentId          String
+  taskId           String?
+  task             Task?                        @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  projectId        String?
+  project          Project?                     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  businessId       String?
+  sourceReference  String?
+  scopeType        String
+  scopeId          String
+  summary          String
+  content          Json?
+  contentHash      String
+  provenance       String
+  source           String                       @default("legacy")
+  confidence       Float?
+  trustLevel       String                       @default("untrusted")
+  sensitivity      String                       @default("INTERNAL")
+  retentionUntil   DateTime
+  observedAt       DateTime?
+  reviewAt         DateTime?
+  expiresAt        DateTime?
+  embeddingModel   String?
   embeddingVersion String?
-  embedding      Unsupported("vector(1536)")?
-  searchVector   Unsupported("tsvector")?
-  approvedBy     String?
-  artifact       ArtifactRecord?
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  embedding        Unsupported("vector(1536)")?
+  searchVector     Unsupported("tsvector")?
+  approvedBy       String?
+  artifact         ArtifactRecord?
+  createdAt        DateTime                     @default(now())
+  updatedAt        DateTime                     @updatedAt
 
   @@unique([contentHash, scopeType, scopeId])
   @@index([scopeType, scopeId, status])
@@ -492,4 +510,114 @@ model AuditEvent {
   result    String
   metadata  Json?
   timestamp DateTime @default(now())
+}
+
+model FoundryCharter {
+  id                           String          @id @default(uuid())
+  version                      Int             @unique
+  status                       String          @default("draft")
+  name                         String
+  goal                         String
+  constraints                  String[]
+  allowedToolClasses           String[]
+  requiredApprovalRules        String[]
+  maxMissionBudgetMinor        BigInt
+  monthlyOperatingBudgetMinor  BigInt
+  monthlyExperimentBudgetMinor BigInt
+  currency                     String
+  defaultTokenBudget           Int
+  hardTokenCeiling             Int
+  maxParallelMissions          Int
+  reviewIntervalDays           Int
+  approvedBy                   String?
+  approvedAt                   DateTime?
+  supersedesId                 String?         @unique
+  supersedes                   FoundryCharter? @relation("CharterSupersession", fields: [supersedesId], references: [id], onDelete: Restrict)
+  supersededBy                 FoundryCharter? @relation("CharterSupersession")
+  createdBy                    String
+  createdAt                    DateTime        @default(now())
+  updatedAt                    DateTime        @updatedAt
+  missions                     Mission[]
+
+  @@index([status])
+}
+
+model MissionTemplate {
+  id                        String    @id @default(uuid())
+  key                       String
+  version                   Int
+  name                      String
+  description               String
+  missionType               String
+  status                    String    @default("draft")
+  defaultRiskLevel          String
+  defaultBudgetMinor        BigInt
+  defaultTokenBudget        Int
+  defaultMaxParallelTasks   Int
+  allowedToolClasses        String[]
+  requiredApprovalRules     String[]
+  definitionOfDoneTemplate  String[]
+  failureConditionsTemplate String[]
+  measurementWindowDays     Int
+  leadingIndicators         String[]
+  laggingIndicators         String[]
+  killCriteria              String[]
+  pricingModels             String[]
+  createdBy                 String
+  certifiedBy               String?
+  certifiedAt               DateTime?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+  missions                  Mission[]
+
+  @@unique([key, version])
+  @@index([status, missionType])
+}
+
+model RevenueStream {
+  id             String          @id @default(uuid())
+  projectId      String?
+  project        Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  businessId     String?
+  name           String
+  key            String          @unique
+  missionType    String
+  status         String          @default("proposed")
+  pricingModel   String
+  owner          String
+  currency       String
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  missions       Mission[]
+  economicEvents EconomicEvent[]
+
+  @@index([projectId, status])
+  @@index([businessId, status])
+}
+
+model EconomicEvent {
+  id                String         @id @default(uuid())
+  missionId         String?
+  mission           Mission?       @relation(fields: [missionId], references: [id], onDelete: SetNull)
+  projectId         String?
+  project           Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  revenueStreamId   String?
+  revenueStream     RevenueStream? @relation(fields: [revenueStreamId], references: [id], onDelete: SetNull)
+  type              String
+  amountMinor       BigInt
+  currency          String
+  category          String
+  source            String
+  externalReference String?
+  attributionMethod String
+  evidence          Json?
+  idempotencyKey    String         @unique
+  occurredAt        DateTime
+  recordedBy        String
+  createdAt         DateTime       @default(now())
+
+  @@index([missionId, occurredAt])
+  @@index([projectId, occurredAt])
+  @@index([revenueStreamId, occurredAt])
+  @@index([type, occurredAt])
 }
