@@ -9,3 +9,10 @@
 
 .project-card .panel-head h2{margin-top:5px}.project-card .panel-head p{color:var(--muted);font-size:12px}.project-url{display:block;border:1px solid #28466c;background:#102643;color:#8db8ff;border-radius:9px;padding:12px;margin:4px 0 15px;overflow-wrap:anywhere}.project-url.missing{width:100%;text-align:left;color:var(--muted);cursor:pointer}.project-meta{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}.project-meta span{background:#121f32;border:1px solid #20314a;border-radius:999px;padding:5px 9px;color:#93a8c2;font-size:11px}
 .sidebar-status .logout-button{margin-top:10px;width:100%;padding:8px 0;font-size:13px;}
+.workflow-recommendation{width:100%;background:transparent;border:0;color:inherit;text-align:left;cursor:pointer}
+.workflow-recommendation:hover{background:#12223a}
+.code-editor{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;tab-size:2;white-space:pre}
+.workflow-revision{margin-top:22px;padding-top:20px;border-top:1px solid var(--line)}
+.workflow-message{color:#6eebc0;background:#12382d}
+.workflow-table .table-row{grid-template-columns:1fr 1fr .7fr 1.2fr;min-width:700px}
+.list-row .action-buttons{flex-wrap:wrap;justify-content:flex-end}
