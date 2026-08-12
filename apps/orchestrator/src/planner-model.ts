@@ -21,7 +21,7 @@ async function decide(prisma: PrismaClient, task: { id: string; riskLevel: strin
   ]);
   const rate = parseRatePerMillion(process.env[RATE_ENV]);
   return routeModel({
-    role: 'planner', risk: risk(task.riskLevel), privacySensitive: process.env.PLANNER_LOCAL_FIRST === 'true', complexity: task.riskLevel === 'low' ? 'simple' : 'complex',
+    role: 'planner', risk: risk(task.riskLevel), privacySensitive: false, localFirst: process.env.PLANNER_LOCAL_FIRST === 'true', complexity: task.riskLevel === 'low' ? 'simple' : 'complex',
     estimatedTokens: positive(process.env.PLANNER_ESTIMATED_TOKENS, 16_000), cloudRatePerMillionUsd: rate,
     cloudAvailable: Boolean(process.env.GEMINI_API_KEY), localAvailable: process.env.OLLAMA_DISABLED !== 'true',
     cloudModel: process.env.GEMINI_PLANNER_MODEL || 'gemini-3-flash-preview', localModel: task.riskLevel === 'high' ? (process.env.OLLAMA_REASONING_MODEL || process.env.OLLAMA_PLANNER_MODEL || 'deepseek-r1:8b') : (process.env.OLLAMA_PLANNER_MODEL || process.env.OLLAMA_MODEL || 'qwen3:8b'),
