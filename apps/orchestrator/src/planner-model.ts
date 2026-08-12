@@ -21,10 +21,10 @@ async function decide(prisma: PrismaClient, task: { id: string; riskLevel: strin
   ]);
   const rate = parseRatePerMillion(process.env[RATE_ENV]);
   return routeModel({
-    role: 'planner', risk: risk(task.riskLevel), privacySensitive: false, complexity: task.riskLevel === 'low' ? 'simple' : 'complex',
+    role: 'planner', risk: risk(task.riskLevel), privacySensitive: process.env.PLANNER_LOCAL_FIRST === 'true', complexity: task.riskLevel === 'low' ? 'simple' : 'complex',
     estimatedTokens: positive(process.env.PLANNER_ESTIMATED_TOKENS, 16_000), cloudRatePerMillionUsd: rate,
     cloudAvailable: Boolean(process.env.GEMINI_API_KEY), localAvailable: process.env.OLLAMA_DISABLED !== 'true',
-    cloudModel: process.env.GEMINI_PLANNER_MODEL || 'gemini-3-flash-preview', localModel: process.env.OLLAMA_MODEL || 'qwen2.5-coder:3b',
+    cloudModel: process.env.GEMINI_PLANNER_MODEL || 'gemini-3-flash-preview', localModel: task.riskLevel === 'high' ? (process.env.OLLAMA_REASONING_MODEL || process.env.OLLAMA_PLANNER_MODEL || 'deepseek-r1:8b') : (process.env.OLLAMA_PLANNER_MODEL || process.env.OLLAMA_MODEL || 'qwen3:8b'),
     budget: { tokenLimit: positive(process.env.ORCHESTRATOR_TASK_TOKEN_LIMIT, 120_000), dailyTokenLimit: positive(process.env.ORCHESTRATOR_DAILY_TOKEN_LIMIT, 480_000), maximumTaskCostUsd: positive(process.env.ORCHESTRATOR_MAX_TASK_COST_USD, 5), maximumDailyCostUsd: positive(process.env.ORCHESTRATOR_MAX_DAILY_COST_USD, 25) },
     usage: { taskTokens: taskTokens._sum.tokenUsage || 0, dailyTokens: dailyTokens._sum.tokenUsage || 0, taskCloudCostUsd: estimateUsd(taskCloud._sum.tokenUsage || 0, rate), dailyCloudCostUsd: estimateUsd(dailyCloud._sum.tokenUsage || 0, rate) },
   });
@@ -65,6 +65,6 @@ export async function generatePlannerResponse(prisma: PrismaClient, task: { id: 
     return { text: response.text?.trim() || '', totalTokens: response.usageMetadata?.totalTokenCount || 0, provider: 'google', model: decision.model };
   } catch (error) {
     if (!transient(error) || process.env.OLLAMA_DISABLED === 'true') throw error;
-    return localGenerate(prompt, process.env.OLLAMA_MODEL || 'qwen2.5-coder:3b');
+    return localGenerate(prompt, task.riskLevel === 'high' ? (process.env.OLLAMA_REASONING_MODEL || process.env.OLLAMA_PLANNER_MODEL || 'deepseek-r1:8b') : (process.env.OLLAMA_PLANNER_MODEL || process.env.OLLAMA_MODEL || 'qwen3:8b'));
   }
 }
