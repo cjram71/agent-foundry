@@ -9,7 +9,7 @@ import {
   type FoundryJobOptions,
 } from '@/lib/queue-policy';
 
-const globalForQueue = globalThis as unknown as { foundryQueue?: Queue; executionQueue?: Queue; foundryRedis?: IORedis };
+const globalForQueue = globalThis as unknown as { foundryQueue?: Queue; executionQueue?: Queue; agentQueue?: Queue; foundryRedis?: IORedis };
 
 function connection() {
   if (!globalForQueue.foundryRedis) {
@@ -35,6 +35,11 @@ export function getTaskQueue() {
 export function getRedis() {
   return connection();
 }
+export function getAgentQueue() {
+  if (!globalForQueue.agentQueue) globalForQueue.agentQueue = new Queue('foundry-agent-runs', { connection: connection() });
+  return globalForQueue.agentQueue;
+}
+
 
 export function getExecutionQueue() {
   if (!globalForQueue.executionQueue) globalForQueue.executionQueue = new Queue('foundry-execution', { connection: connection() });
@@ -74,4 +79,14 @@ export async function enqueuePlan(taskId: string): Promise<EnqueueResult> {
 
 export async function enqueueExecution(taskId: string): Promise<EnqueueResult> {
   return enqueueWithDedupe(getExecutionQueue(), 'execute', { action: 'execute', taskId }, executeJobId(taskId), EXECUTE_JOB_OPTIONS);
+}
+
+export async function enqueueAgentExecution(taskId: string): Promise<EnqueueResult> {
+  return enqueueWithDedupe(
+    getAgentQueue(),
+    'agent-execute',
+    { action: 'agent-execute', taskId },
+    `agent-execute-${taskId}`,
+    EXECUTE_JOB_OPTIONS,
+  );
 }

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { spawn } from 'node:child_process';
 import prisma from '@/lib/prisma';
 import { getSession, isSameOrigin } from '@/lib/auth';
-import { enqueueExecution, enqueuePlan, getTaskQueue, getExecutionQueue } from '@/lib/queue';
+import { enqueueAgentExecution, enqueueExecution, enqueuePlan, getTaskQueue, getExecutionQueue, getAgentQueue } from '@/lib/queue';
 import { transitionTask, emitTaskEvent, isValidTransition } from '@foundry/state-machine';
 import { classifyTaskRisk, evaluateTaskAgainstPolicy, asDeclaredRisk } from '@foundry/policy';
 import { parseManagerPlan, buildTaskDrafts } from '@foundry/manager';
@@ -21,6 +21,14 @@ async function authorize(request: Request) {
   if (!isSameOrigin(request)) return { error: NextResponse.json({ error: 'Invalid origin' }, { status: 403 }) };
   return { session };
 }
+async function projectAgentFor(task: { projectId: string; assignedAgent: string | null }) {
+  if (!task.assignedAgent) return null;
+  return prisma.projectAgent.findFirst({
+    where: { projectId: task.projectId, status: { in: ['supervised', 'certified'] }, agentVersion: { agentId: task.assignedAgent } },
+    include: { agentVersion: true },
+  });
+}
+
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await authorize(request); if (auth.error) return auth.error;
@@ -43,6 +51,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (body.action === 'cancel_task') {
     // P14 cancellation driver: the machine decides which states are
     // cancellable (terminal states and APPROVED have no CANCELLED edge).
+
     if (!isValidTransition(current.state, 'CANCELLED')) return NextResponse.json({ error: `Task is already ${current.status.replaceAll('_', ' ')} and cannot be cancelled.` }, { status: 409 });
     const reason = typeof body.comments === 'string' && body.comments.trim() ? body.comments.trim().slice(0, 2000) : 'Cancelled by administrator';
     await prisma.$transaction(async tx => {
@@ -58,6 +67,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     let removedJobs = 0;
     try { removedJobs += await getTaskQueue().remove(planJobId(id)); } catch { /* queue absent */ }
     try { removedJobs += await getExecutionQueue().remove(executeJobId(id)); } catch { /* queue absent */ }
+    try { removedJobs += await getAgentQueue().remove(`agent-execute-${id}`); } catch { /* queue absent */ }
     return NextResponse.json({ message: `Task cancelled.${removedJobs ? ` Removed ${removedJobs} queued job(s).` : ''} Active sandbox cleanup is handled by the Runner boundary.` });
   }
 
@@ -67,6 +77,30 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (!planSpend.allowed) {
       await prisma.auditEvent.create({ data: { actor: auth.session!.userId, action: 'cost.spend_blocked', target: id, result: 'rejected', metadata: { stage: 'request_plan', spendUsd: planSpend.spendUsd, limitUsd: planSpend.limitUsd } } });
       return NextResponse.json({ error: planSpend.reason }, { status: 409 });
+    }
+    const projectAgent = await projectAgentFor(current);
+    if (projectAgent) {
+      const manifest = projectAgent.agentVersion.manifest as any;
+      const contract = manifest.contract;
+      if (!contract) return NextResponse.json({ error: 'The assigned agent does not have an Agent Contract v2.' }, { status: 409 });
+      const plan = {
+        summary: `Supervised ${manifest.name} run under Agent Contract v2`,
+        steps: contract.operatingLoop.map((description: string, index: number) => ({ order: index + 1, description })),
+        deliverables: contract.deliverables,
+        selfChecks: contract.selfChecks,
+        exclusions: contract.exclusions,
+        limits: { maximumRuntimeMinutes: contract.maximumRuntimeMinutes, maximumToolCalls: contract.maximumToolCalls, memoryWriteMode: contract.memoryWriteMode },
+      };
+      await prisma.$transaction(async tx => {
+        await transitionTask(tx, { taskId: id, to: 'PLANNING', actor: auth.session!.userId, actorType: 'human', reason: 'deterministic Agent Contract plan requested', legacyStatus: 'planning', extraTaskData: { startedAt: current.startedAt || new Date() } });
+        await tx.agentRun.create({ data: { taskId: id, provider: 'policy', model: 'agent-contract-v2', role: 'planner', promptHash: projectAgent.agentVersion.checksum, status: 'success', outputSummary: JSON.stringify(plan) } });
+        await transitionTask(tx, { taskId: id, to: 'AWAITING_APPROVAL', actor: 'agent-contract-compiler', actorType: 'system', reason: 'Agent Contract plan compiled', legacyStatus: 'awaiting_plan_approval' });
+        await tx.approval.create({ data: { taskId: id, approvalType: 'plan' } });
+        await emitTaskEvent(tx, { taskId: id, type: 'plan_generated', actor: 'agent-contract-compiler', actorType: 'system', payload: { agentId: manifest.id, deterministic: true, steps: plan.steps.length } });
+        await emitTaskEvent(tx, { taskId: id, type: 'plan_approval_requested', actor: 'agent-contract-compiler', actorType: 'system', payload: { gate: 'plan' } });
+        await tx.auditEvent.create({ data: { actor: auth.session!.userId, action: 'agent_team.plan_compiled', target: id, result: 'success', metadata: { projectAgentId: projectAgent.id, agentId: manifest.id, version: manifest.version } } });
+      });
+      return NextResponse.json({ message: 'Agent Contract plan compiled. Review and approve it before the supervised run.' });
     }
     await transitionTask(prisma, { taskId: id, to: 'PLANNING', actor: auth.session!.userId, actorType: 'human', reason: 'plan requested', legacyStatus: 'planning', extraTaskData: { startedAt: current.startedAt || new Date() } });
     try {
@@ -84,6 +118,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (current.status !== 'awaiting_plan_approval') return NextResponse.json({ error: `Task is already ${current.status.replaceAll('_', ' ')}.` }, { status: 409 });
     const approved = body.action === 'approve_plan';
     const evaluationOnly = current.title.startsWith('AI Project Manager Evaluation');
+    const assignedProjectAgent = approved ? await projectAgentFor(current) : null;
     if (approved) {
       const policy = await loadActivePolicy(prisma, current.projectId);
       const risk = evaluationOnly
@@ -102,7 +137,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         return NextResponse.json({ error: spend.reason }, { status: 409 });
       }
     }
-    if (approved && !evaluationOnly && process.env.GITHUB_CLI_ENABLED !== 'true' && (!process.env.GITHUB_INSTALLATION_ID || !process.env.GITHUB_PRIVATE_KEY_PATH)) {
+    if (approved && !evaluationOnly && !assignedProjectAgent && process.env.GITHUB_CLI_ENABLED !== 'true' && (!process.env.GITHUB_INSTALLATION_ID || !process.env.GITHUB_PRIVATE_KEY_PATH)) {
       return NextResponse.json({ error: 'Plan saved, but execution is locked until the GitHub App installation and private key are configured.' }, { status: 503 });
     }
     await prisma.$transaction(async tx => {
@@ -113,7 +148,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         reason: approved ? 'plan approved' : 'plan rejected',
         legacyStatus: approved ? (evaluationOnly ? 'completed' : 'queued') : 'rejected',
         extraTaskData: {
-          assignedAgent: approved ? (evaluationOnly ? 'AI Project Manager' : 'Agent Foundry Runner') : current.assignedAgent,
+          assignedAgent: approved ? (evaluationOnly ? 'AI Project Manager' : assignedProjectAgent ? current.assignedAgent : 'Agent Foundry Runner') : current.assignedAgent,
           completedAt: approved && evaluationOnly ? new Date() : current.completedAt,
         },
       });
@@ -149,8 +184,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
     if (approved) {
       try {
-        const { job, deduplicated } = await enqueueExecution(id);
-        await prisma.auditEvent.create({ data: { actor: auth.session!.userId, action: 'task.execution_queued', target: id, result: 'success', metadata: { jobId: job.id, deduplicated } } });
+        const { job, deduplicated } = assignedProjectAgent ? await enqueueAgentExecution(id) : await enqueueExecution(id);
+        await prisma.auditEvent.create({ data: { actor: auth.session!.userId, action: assignedProjectAgent ? 'agent_team.execution_queued' : 'task.execution_queued', target: id, result: 'success', metadata: { jobId: job.id, deduplicated, projectAgentId: assignedProjectAgent?.id } } });
         await emitTaskEvent(prisma, { taskId: id, type: 'task_queued', actor: auth.session!.userId, actorType: 'human', correlationId: job.id ?? null, payload: { jobId: job.id ?? null, deduplicated } });
       } catch {
         await prisma.$transaction(async tx => {
@@ -193,7 +228,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       await prisma.auditEvent.create({ data: { actor: auth.session!.userId, action: 'cost.spend_blocked', target: id, result: 'rejected', metadata: { stage: 'resubmit_changes', spendUsd: resubmitSpend.spendUsd, limitUsd: resubmitSpend.limitUsd } } });
       return NextResponse.json({ error: resubmitSpend.reason }, { status: 409 });
     }
-    if (process.env.GITHUB_CLI_ENABLED !== 'true' && (!process.env.GITHUB_INSTALLATION_ID || !process.env.GITHUB_PRIVATE_KEY_PATH)) {
+    const resubmitProjectAgent = await projectAgentFor(current);
+    if (!resubmitProjectAgent && process.env.GITHUB_CLI_ENABLED !== 'true' && (!process.env.GITHUB_INSTALLATION_ID || !process.env.GITHUB_PRIVATE_KEY_PATH)) {
       return NextResponse.json({ error: 'Execution is locked until the GitHub App installation and private key are configured.' }, { status: 503 });
     }
     // Enqueue first, transition second: if the state update fails after the
@@ -201,7 +237,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     // simply stays in CHANGES_REQUESTED for another resubmit. The reverse
     // order could orphan a QUEUED task with no job behind it.
     try {
-      const { job, deduplicated } = await enqueueExecution(id);
+      const { job, deduplicated } = resubmitProjectAgent ? await enqueueAgentExecution(id) : await enqueueExecution(id);
       await prisma.$transaction(async tx => {
         await transitionTask(tx, {
           taskId: id, to: 'QUEUED',

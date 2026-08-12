@@ -642,6 +642,7 @@ model ProjectAgent {
   certifiedAt          DateTime?
   pausedAt             DateTime?
   retiredAt            DateTime?
+  n8nWorkflowId        String?          @unique
   createdBy            String
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt

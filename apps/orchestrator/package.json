@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node dist/worker.js",
     "build": "tsc",
-    "test": "npm run build && node --test dist/catalog.test.js dist/plan.test.js dist/planner-model.test.js"
+    "test": "npm run build && node --test dist/*.test.js"
   },
   "devDependencies": {
     "@types/node": "^26.1.2",
@@ -13,8 +13,11 @@
     "typescript": "5.9.3"
   },
   "dependencies": {
+    "@foundry/agent-contracts": "^1.0.0",
     "@foundry/cost": "0.1.0",
     "@foundry/github": "0.1.0",
+    "@foundry/memory": "^0.1.0",
+    "@foundry/memory-policy": "^0.1.0",
     "@foundry/model-router": "0.1.0",
     "@foundry/models": "0.1.0",
     "@foundry/ops": "0.1.0",
