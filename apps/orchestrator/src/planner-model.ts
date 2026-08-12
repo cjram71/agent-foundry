@@ -24,7 +24,7 @@ async function decide(prisma: PrismaClient, task: { id: string; riskLevel: strin
     role: 'planner', risk: risk(task.riskLevel), privacySensitive: false, complexity: task.riskLevel === 'low' ? 'simple' : 'complex',
     estimatedTokens: positive(process.env.PLANNER_ESTIMATED_TOKENS, 16_000), cloudRatePerMillionUsd: rate,
     cloudAvailable: Boolean(process.env.GEMINI_API_KEY), localAvailable: process.env.OLLAMA_DISABLED !== 'true',
-    cloudModel: process.env.GEMINI_PLANNER_MODEL || 'gemini-3.6-flash', localModel: process.env.OLLAMA_MODEL || 'qwen2.5-coder:3b',
+    cloudModel: process.env.GEMINI_PLANNER_MODEL || 'gemini-3-flash-preview', localModel: process.env.OLLAMA_MODEL || 'qwen2.5-coder:3b',
     budget: { tokenLimit: positive(process.env.ORCHESTRATOR_TASK_TOKEN_LIMIT, 120_000), dailyTokenLimit: positive(process.env.ORCHESTRATOR_DAILY_TOKEN_LIMIT, 480_000), maximumTaskCostUsd: positive(process.env.ORCHESTRATOR_MAX_TASK_COST_USD, 5), maximumDailyCostUsd: positive(process.env.ORCHESTRATOR_MAX_DAILY_COST_USD, 25) },
     usage: { taskTokens: taskTokens._sum.tokenUsage || 0, dailyTokens: dailyTokens._sum.tokenUsage || 0, taskCloudCostUsd: estimateUsd(taskCloud._sum.tokenUsage || 0, rate), dailyCloudCostUsd: estimateUsd(dailyCloud._sum.tokenUsage || 0, rate) },
   });

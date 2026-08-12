@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { createHash } from 'node:crypto';
+import { transitionTask, emitTaskEvent } from '@foundry/state-machine';
 import type { AgentManifest } from "@foundry/agent-contracts";
 import { certificationReadiness } from "@foundry/agent-contracts";
 import { starterAgentTemplates } from "@foundry/agent-contracts";
@@ -228,6 +230,28 @@ export async function PATCH(request: Request) {
             where: { id: report.projectAgentId },
             data: { acceptedRuns: { increment: 1 } },
           });
+        if (report.taskId) {
+          const task = await tx.task.findUnique({ where: { id: report.taskId } });
+          if (task?.state === 'AWAITING_APPROVAL') {
+            await transitionTask(tx, { taskId: task.id, to: body.accepted ? 'COMPLETED' : 'CHANGES_REQUESTED', actor: auth.session!.userId, actorType: 'human', reason: body.accepted ? 'supervised agent run accepted' : 'supervised agent run rejected for revision', legacyStatus: body.accepted ? 'completed' : 'awaiting_human_review', extraTaskData: body.accepted ? { completedAt: new Date() } : undefined });
+            await tx.approval.updateMany({ where: { taskId: task.id, approvalType: 'agent_run', decision: 'pending' }, data: { decision: body.accepted ? 'approved' : 'changes_requested', approvedBy: auth.session!.userId, approvedAt: new Date(), comments: String(body.reviewNotes ?? '').slice(0, 2000) } });
+            await emitTaskEvent(tx, { taskId: task.id, type: body.accepted ? 'task_completed' : 'final_rejected', actor: auth.session!.userId, actorType: 'human', payload: { via: 'supervised_agent_review', reportId: report.id } });
+          }
+        }
+        if (body.accepted && Array.isArray(report.memoryCandidates)) {
+          for (const candidate of report.memoryCandidates.slice(0, 10)) {
+            if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) continue;
+            const item = candidate as Record<string, unknown>;
+            if (typeof item.summary !== 'string' || typeof item.content !== 'string' || typeof item.sourceReference !== 'string') continue;
+            const serialized = JSON.stringify({ summary: item.summary, content: item.content });
+            const contentHash = createHash('sha256').update(serialized).digest('hex');
+            await tx.memoryRecord.upsert({
+              where: { contentHash_scopeType_scopeId: { contentHash, scopeType: 'PROJECT', scopeId: report.projectAgent.projectId } },
+              create: { kind: 'SEMANTIC', status: 'CANDIDATE', agentId: report.projectAgentId, projectId: report.projectAgent.projectId, scopeType: 'PROJECT', scopeId: report.projectAgent.projectId, summary: item.summary.slice(0, 1000), content: JSON.parse(JSON.stringify({ text: item.content, sourceReference: item.sourceReference })), contentHash, provenance: `agent-run-report:${report.id}`, source: 'governed-agent', confidence: typeof item.confidence === 'number' ? item.confidence : null, trustLevel: 'untrusted', sensitivity: 'INTERNAL', retentionUntil: new Date(Date.now() + 365 * 86400000), reviewAt: new Date() },
+              update: {},
+            });
+          }
+        }
         await tx.auditEvent.create({
           data: {
             actor: auth.session!.userId,

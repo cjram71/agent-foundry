@@ -15,6 +15,7 @@ import { validatePlan, CATALOG_REPOSITORY } from './plan';
 import { GitHubClient } from '@foundry/github';
 import { generatePlannerResponse, ModelBudgetError } from './planner-model';
 
+import { startKnowledgeAgentWorker } from './agent-worker';
 const prisma = new PrismaClient();
 const connection = process.env.REDIS_URL ? new IORedis(process.env.REDIS_URL, { maxRetriesPerRequest: null }) : new IORedis({ host: process.env.REDIS_HOST || '127.0.0.1', port: Number(process.env.REDIS_PORT || 6379), password: process.env.REDIS_PASSWORD || undefined, maxRetriesPerRequest: null });
 const catalogRoot = process.env.AGENT_CATALOG_PATH || path.join(os.homedir(), 'agent-catalogs', '500-AI-Agents-Projects');
@@ -88,7 +89,7 @@ const worker = new Worker('foundry-tasks', async (job) => {
     const permanent = error instanceof CatalogIntegrityError || error instanceof ModelBudgetError;
     const finalAttempt = permanent || job.attemptsMade >= Math.max((job.opts.attempts ?? 1) - 1, 0);
     await prisma.$transaction(async tx => {
-      await tx.agentRun.create({ data: { taskId: task.id, provider: error instanceof ModelBudgetError ? 'policy' : 'google', model: error instanceof ModelBudgetError ? 'none' : 'gemini-3.6-flash', role: 'planner', promptHash: createHash('sha256').update(prompt).digest('hex'), status: 'failed', errorInfo: message } });
+      await tx.agentRun.create({ data: { taskId: task.id, provider: error instanceof ModelBudgetError ? 'policy' : 'google', model: error instanceof ModelBudgetError ? 'none' : 'gemini-3-flash-preview', role: 'planner', promptHash: createHash('sha256').update(prompt).digest('hex'), status: 'failed', errorInfo: message } });
       const latest = await tx.task.findUnique({ where: { id: task.id }, select: { status: true, state: true } });
       const preserveSuccessfulPlan = latest?.status === 'awaiting_plan_approval';
       if (!preserveSuccessfulPlan && finalAttempt && latest?.state === 'PLANNING') {
@@ -130,3 +131,6 @@ async function persistCostEstimate(taskId: string): Promise<void> {
 
 createStopSupervisor({ store: connection, worker, log: (message) => console.log(message) }).start();
 console.log('Orchestrator listening with mandatory 500-AI-Agents catalog selection.');
+const knowledgeAgentWorker = startKnowledgeAgentWorker(prisma, connection);
+createStopSupervisor({ store: connection, worker: knowledgeAgentWorker, log: (message) => console.log(message) }).start();
+knowledgeAgentWorker.on('failed', (job, error) => console.error(`[Agent Job ${job?.id}] Failed:`, error.message));
