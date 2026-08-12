@@ -207,8 +207,9 @@ export class GitHubClient {
     if (result.stdout.trim() || !safePaths.length) return result.stdout.slice(0, 200000);
     const untrackedDiffs: string[] = [];
     for (const relative of safePaths) {
-      const candidate = await this.runWithExitCodes('git', ['-C', repoPath, 'diff', '--no-ext-diff', '--no-index', '--', '/dev/null', relative], [0, 1]);
-      if (candidate.stdout.trim()) untrackedDiffs.push(candidate.stdout);
+      const candidate = await this.runWithExitCodes('git', ['-C', repoPath, 'diff', '--no-index', '/dev/null', relative], [0, 1]);
+      const output = candidate.stdout || candidate.stderr;
+      if (output.trim()) untrackedDiffs.push(output);
     }
     return untrackedDiffs.join('\n').slice(0, 200000);
   }
