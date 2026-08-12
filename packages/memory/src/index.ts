@@ -1,3 +1,5 @@
+export * from './context';
+
 export type MemoryKind='observation'|'episodic'|'knowledge'|'preference'|'decision'|'procedure'|'skill'|'policy';
 export type TrustLevel='untrusted'|'reviewed'|'trusted';
 export interface MemoryRecord { id:string; kind:MemoryKind; content:string; source:string; sourceReference?:string; projectId?:string; businessId?:string; confidence?:number; sensitivity?:string; trustLevel:TrustLevel; observedAt?:string; reviewAt?:string; expiresAt?:string; provenance:string; embeddingModel?:string; embeddingVersion?:string }

@@ -98,17 +98,18 @@ model AgentDefinition {
 }
 
 model AgentVersion {
-  id          String               @id @default(uuid())
-  agentId     String
-  agent       AgentDefinition      @relation(fields: [agentId], references: [id], onDelete: Restrict)
-  version     String
-  status      AgentLifecycleStatus @default(EXPERIMENTAL)
-  manifest    Json
-  checksum    String
-  createdBy   String
-  createdAt   DateTime             @default(now())
-  activatedAt DateTime?
-  retiredAt   DateTime?
+  id            String               @id @default(uuid())
+  agentId       String
+  agent         AgentDefinition      @relation(fields: [agentId], references: [id], onDelete: Restrict)
+  version       String
+  status        AgentLifecycleStatus @default(EXPERIMENTAL)
+  manifest      Json
+  checksum      String
+  createdBy     String
+  createdAt     DateTime             @default(now())
+  activatedAt   DateTime?
+  retiredAt     DateTime?
+  projectAgents ProjectAgent[]
 
   @@unique([agentId, version])
   @@index([agentId, status])
@@ -160,6 +161,7 @@ model Project {
   economicEvents   EconomicEvent[]
   runs             ProjectRun[]
   missions         Mission[]
+  projectAgents    ProjectAgent[]
 }
 
 model ProjectRun {
@@ -620,4 +622,54 @@ model EconomicEvent {
   @@index([projectId, occurredAt])
   @@index([revenueStreamId, occurredAt])
   @@index([type, occurredAt])
+}
+
+model ProjectAgent {
+  id                   String           @id @default(uuid())
+  projectId            String
+  project              Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  agentVersionId       String
+  agentVersion         AgentVersion     @relation(fields: [agentVersionId], references: [id], onDelete: Restrict)
+  status               String           @default("supervised")
+  supervisedRuns       Int              @default(0)
+  acceptedRuns         Int              @default(0)
+  requiredTestsPassed  Boolean          @default(false)
+  securityReviewPassed Boolean          @default(false)
+  charterVersion       Int?
+  scheduleEnabled      Boolean          @default(false)
+  scheduleExpression   String?
+  certifiedBy          String?
+  certifiedAt          DateTime?
+  pausedAt             DateTime?
+  retiredAt            DateTime?
+  createdBy            String
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  reports              AgentRunReport[]
+
+  @@unique([projectId, agentVersionId])
+  @@index([projectId, status])
+  @@index([agentVersionId, status])
+}
+
+model AgentRunReport {
+  id                 String       @id @default(uuid())
+  projectAgentId     String
+  projectAgent       ProjectAgent @relation(fields: [projectAgentId], references: [id], onDelete: Cascade)
+  taskId             String?
+  completed          String[]
+  waitingForApproval String[]
+  uncertain          String[]
+  evidence           String[]
+  memoryCandidates   Json?
+  accepted           Boolean?
+  reviewNotes        String?
+  reviewedBy         String?
+  reviewedAt         DateTime?
+  startedAt          DateTime
+  completedAt        DateTime
+  createdAt          DateTime     @default(now())
+
+  @@index([projectAgentId, createdAt])
+  @@index([taskId])
 }
