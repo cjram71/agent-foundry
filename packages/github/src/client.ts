@@ -204,7 +204,13 @@ export class GitHubClient {
     const safePaths = paths.map(value => this.assertRelativePath(value));
     if (safePaths.length) await this.run('git', ['-C', repoPath, 'add', '--intent-to-add', '--', ...safePaths]);
     const result = await this.run('git', ['-C', repoPath, 'diff', '--no-ext-diff', '--']);
-    return result.stdout.slice(0, 200000);
+    if (result.stdout.trim() || !safePaths.length) return result.stdout.slice(0, 200000);
+    const untrackedDiffs: string[] = [];
+    for (const relative of safePaths) {
+      const candidate = await this.runWithExitCodes('git', ['-C', repoPath, 'diff', '--no-ext-diff', '--no-index', '--', '/dev/null', relative], [0, 1]);
+      if (candidate.stdout.trim()) untrackedDiffs.push(candidate.stdout);
+    }
+    return untrackedDiffs.join('\n').slice(0, 200000);
   }
 
   public async commitTaskChanges(repoPath: string, paths: string[], message: string): Promise<string> {
