@@ -187,7 +187,7 @@ Your previous response could not be applied: ${detail}. Return the complete resu
         ({ summary: changeSummary, tokens: cycleTokens } = await runCoder(buildRepairPrompt({ ...promptParts, previousSummary: changeSummary, failureStage: failedStage.stage, feedback: failedStage.outputTail, cycle: repairCycle, budget: repairBudget }), repairCycle));
         continue;
       }
-      const diff = await github.getDiff(repoPath);
+      const diff = await github.getDiff(repoPath, [...changedPaths]);
       if (!diff.trim()) throw new Error('Coding agent produced no diff');
       await tryEmitTaskEvent(prisma, { taskId, type: 'validation_passed', actor: 'runner', actorType: 'worker', attemptId: attempt.id, correlationId: jobId, payload: { commands: commands.map(command => `${command.executable} ${command.args.join(' ')}`), stages: report.stages.map(stage => ({ stage: stage.stage, command: stage.command, exitCode: stage.exitCode, durationMs: stage.durationMs })), repairCyclesCompleted: repairCycle } });
       await transition('REVIEWING', { reason: 'validation produced a diff; safety review starting', legacyStatus: 'reviewing' });

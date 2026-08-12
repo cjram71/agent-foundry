@@ -199,8 +199,10 @@ export class GitHubClient {
     await this.run('git', ['-C', repoPath, 'push', '--set-upstream', 'origin', branchName]);
   }
 
-  public async getDiff(repoPath: string): Promise<string> {
+  public async getDiff(repoPath: string, paths: string[] = []): Promise<string> {
     await this.assertWorkspace(repoPath);
+    const safePaths = paths.map(value => this.assertRelativePath(value));
+    if (safePaths.length) await this.run('git', ['-C', repoPath, 'add', '--intent-to-add', '--', ...safePaths]);
     const result = await this.run('git', ['-C', repoPath, 'diff', '--no-ext-diff', '--']);
     return result.stdout.slice(0, 200000);
   }
