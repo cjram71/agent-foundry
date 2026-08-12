@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getSession, isSameOrigin } from '@/lib/auth';
 import { compileOperatorMission } from '@/lib/mission-policy';
+import { charterCeiling, validateMissionContract } from '@foundry/mission';
 
 async function requireAdmin(request?: Request) {
   const session = await getSession();
@@ -29,11 +30,16 @@ export async function POST(request: Request) {
     if (typeof body.projectId !== 'string') return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
     const project = await prisma.project.findUnique({ where: { id: body.projectId }, include: { policies: { where: { active: true }, orderBy: { version: 'desc' }, take: 1 } } });
     if (!project?.authorisedStatus) return NextResponse.json({ error: 'Project must be authorized' }, { status: 409 });
+    const charter = await prisma.foundryCharter.findFirst({ where: { status: 'active' } });
+    if (!charter) return NextResponse.json({ error: 'An active Foundry Charter is required' }, { status: 409 });
     const policy = project.policies[0];
     if (!policy) return NextResponse.json({ error: 'Active project policy is required' }, { status: 409 });
-    const contract = compileOperatorMission(body, project.id, auth.session!.userId, policy);
+    const candidate = compileOperatorMission(body, project.id, auth.session!.userId, policy);
+    const contract = { ...candidate, approvalRules: [...new Set([...candidate.approvalRules, ...charter.requiredApprovalRules])] };
+    const governance = validateMissionContract(contract, charterCeiling(charter));
+    if (!governance.ok) return NextResponse.json({ error: 'Mission exceeds the active Foundry Charter', details: governance.errors }, { status: 409 });
     const mission = await prisma.$transaction(async tx => {
-      const created = await tx.mission.create({ data: { ...contract, deadline: contract.deadline ? new Date(contract.deadline) : null, createdBy: auth.session!.userId } });
+      const created = await tx.mission.create({ data: { ...contract, deadline: contract.deadline ? new Date(contract.deadline) : null, charterId: charter.id, charterVersion: charter.version, createdBy: auth.session!.userId } });
       await tx.missionEvent.create({ data: { missionId: created.id, type: 'mission_created', actor: auth.session!.userId, actorType: 'human', payload: { version: created.version, riskLevel: created.riskLevel } } });
       await tx.auditEvent.create({ data: { actor: auth.session!.userId, action: 'mission.created', target: created.id, result: 'success', metadata: { projectId: project.id, riskLevel: created.riskLevel, budgetUsd: created.budgetUsd, tokenBudget: created.tokenBudget } } });
       return created;
