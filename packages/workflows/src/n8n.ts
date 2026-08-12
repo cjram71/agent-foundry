@@ -23,7 +23,8 @@ export function validateN8nWorkflow(workflow:N8nWorkflow,allowed=DEFAULT_ALLOWED
 export function requiresActivationApproval(risk:WorkflowRisk,actions:string[]):boolean{return risk!=='low'||actions.some(action=>/(send|publish|delete|deploy|payment|charge|write|update|create)/i.test(action));}
 export function createStarterWorkflow(contract:WorkflowContract):N8nWorkflow{
  const triggerType=/webhook/i.test(contract.trigger)?'n8n-nodes-base.webhook':/schedule|cron|daily|weekly|hourly/i.test(contract.trigger)?'n8n-nodes-base.scheduleTrigger':'n8n-nodes-base.manualTrigger';
- const trigger:N8nNode={id:'trigger',name:'Trigger',type:triggerType,typeVersion:1,position:[0,0],parameters:triggerType.endsWith('webhook')?{path:contract.id,httpMethod:'POST'}:{}};
+ const triggerParameters=triggerType.endsWith('webhook')?{path:contract.id,httpMethod:'POST'}:triggerType.endsWith('scheduleTrigger')?{rule:{interval:[{field:'days',daysInterval:1}]}}:{};
+ const trigger:N8nNode={id:'trigger',name:'Trigger',type:triggerType,typeVersion:triggerType.endsWith('scheduleTrigger')?1.2:1,position:[0,0],parameters:triggerParameters};
  const normalize:N8nNode={id:'normalize',name:'Normalize input',type:'n8n-nodes-base.set',typeVersion:3.4,position:[260,0],parameters:{assignments:{assignments:[]},options:{}}};
  return{name:contract.id,nodes:[trigger,normalize],connections:{Trigger:{main:[[{node:'Normalize input',type:'main',index:0}]]}},settings:{executionOrder:'v1'}};
 }
@@ -36,4 +37,5 @@ export class N8nClient{
  update(id:string,workflow:N8nWorkflow){return this.call<Record<string,unknown>>('/api/v1/workflows/'+encodeURIComponent(id),{method:'PUT',body:JSON.stringify(workflow)});}
  activate(id:string){return this.call<Record<string,unknown>>('/api/v1/workflows/'+encodeURIComponent(id)+'/activate',{method:'POST'});}
  deactivate(id:string){return this.call<Record<string,unknown>>('/api/v1/workflows/'+encodeURIComponent(id)+'/deactivate',{method:'POST'});}
+ archive(id:string){return this.call<Record<string,unknown>>('/api/v1/workflows/'+encodeURIComponent(id),{method:'DELETE'});}
 }
