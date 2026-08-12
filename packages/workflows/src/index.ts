@@ -1,3 +1,4 @@
+export * from './n8n.js';
 export interface WorkflowContract {
   id: string; version: string; trigger: string; filters: string[]; normalization: string[];
   deterministicSteps: string[]; aiDecisionSteps: string[]; actions: string[]; validation: string[];

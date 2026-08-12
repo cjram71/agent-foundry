@@ -1,0 +1,7 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createStarterWorkflow,requiresActivationApproval,validateN8nWorkflow} from './n8n.js';
+const contract={id:'daily-report',version:'1.0.0',trigger:'daily schedule',filters:[],normalization:[],deterministicSteps:['collect metrics'],aiDecisionSteps:[],actions:['prepare report'],validation:['output exists'],exceptionHandling:['notify owner'],retryStrategy:'twice with backoff',approvalGates:[],expectedOutput:'report',owner:'ops',projectId:'project-1',enabled:true};
+test('starter workflow is valid and deterministic',()=>{const workflow=createStarterWorkflow(contract);assert.equal(workflow.nodes[0].type,'n8n-nodes-base.scheduleTrigger');assert.deepEqual(validateN8nWorkflow(workflow),[]);});
+test('validator rejects risky node types and embedded secrets',()=>{const workflow=createStarterWorkflow(contract);workflow.nodes.push({id:'bad',name:'Bad',type:'n8n-nodes-base.executeCommand',typeVersion:1,position:[1,1],parameters:{apiKey:'secret'}});const errors=validateN8nWorkflow(workflow);assert.ok(errors.some(error=>error.includes('not allowed')));assert.ok(errors.some(error=>error.includes('credential-like')));});
+test('activation approval follows risk and side effects',()=>{assert.equal(requiresActivationApproval('low',['prepare report']),false);assert.equal(requiresActivationApproval('medium',[]),true);assert.equal(requiresActivationApproval('low',['send customer email']),true);});
