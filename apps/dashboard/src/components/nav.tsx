@@ -4,38 +4,37 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 const sections = [
   [
-    "OPERATIONS",
+    "EXECUTIVE OFFICE",
     [
-      ["/", "Today"],
-      ["/missions", "Missions"],
+      ["/", "Home"],
+      ["/approvals", "Decisions"],
+      ["/businesses", "Company"],
       ["/projects", "Projects"],
-      ["/tasks", "Tasks"],
-      ["/approvals", "Approvals"],
-      ["/results", "Results"],
     ],
   ],
   [
-    "INTELLIGENCE",
+    "WORK IN PROGRESS",
     [
-      ["/intelligence/agents", "Agents"],
-      ["/intelligence/knowledge", "Knowledge"],
+      ["/missions", "Company Missions"],
+      ["/tasks", "Tasks"],
+      ["/results", "Results & Evidence"],
+    ],
+  ],
+  [
+    "COMPANY KNOWLEDGE",
+    [
+      ["/intelligence/agents", "AI Workforce"],
+      ["/intelligence/knowledge", "Memory"],
+    ],
+  ],
+  [
+    "ADVANCED",
+    [
       ["/intelligence/skills", "Skills"],
       ["/intelligence/workflows", "Workflows"],
-    ],
-  ],
-  [
-    "PLATFORM",
-    [
-      ["/platform/models-cost", "Models & Cost"],
+      ["/platform/models-cost", "AI Cost"],
       ["/platform/system-health", "System Health"],
       ["/platform/security-audit", "Security & Audit"],
-    ],
-  ],
-  [
-    "BUSINESS",
-    [
-      ["/founder", "Founder Dashboard"],
-      ["/businesses", "Businesses"],
     ],
   ],
 ] as const;
@@ -72,10 +71,10 @@ export default function Nav() {
   return (
     <aside className="sidebar">
       <div className="brand">
-        <span className="brand-mark">G</span>
+        <span className="brand-mark">B</span>
         <div>
-          <strong>Gizmo</strong>
-          <small>Command Center</small>
+          <strong>Boosta OS</strong>
+          <small>Executive Office</small>
         </div>
       </div>
       <nav>
@@ -102,13 +101,13 @@ export default function Nav() {
       <div className="sidebar-status">
         <span className={`status-dot nav-${system}`} />
         {system === "unknown"
-          ? "Status unknown"
+            ? "Status unknown"
           : system === "operational"
-            ? "Gizmo operational"
+            ? "Company systems ready"
             : system === "emergency"
               ? "Emergency stop"
-              : "Gizmo degraded"}
-        <small>Private operator surface</small>
+              : "System needs attention"}
+        <small>Human-controlled company</small>
         <button
           className="button secondary logout-button"
           onClick={async () => {

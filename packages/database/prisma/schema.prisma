@@ -143,6 +143,8 @@ model Session {
 
 model Project {
   id               String          @id @default(uuid())
+  companyId        String?
+  company          Company?        @relation(fields: [companyId], references: [id], onDelete: SetNull)
   name             String
   githubOwner      String
   githubRepo       String
@@ -162,6 +164,8 @@ model Project {
   runs             ProjectRun[]
   missions         Mission[]
   projectAgents    ProjectAgent[]
+
+  @@index([companyId, createdAt])
 }
 
 model ProjectRun {
@@ -216,6 +220,8 @@ model ProjectPolicy {
 
 model Mission {
   id                   String            @id @default(uuid())
+  companyId            String?
+  company              Company?          @relation(fields: [companyId], references: [id], onDelete: SetNull)
   version              Int               @default(1)
   goal                 String
   contextSummary       String?
@@ -256,11 +262,123 @@ model Mission {
   events               MissionEvent[]
 
   @@index([projectId, status])
+  @@index([companyId, status])
   @@index([businessId, status])
   @@index([createdAt])
   @@index([charterId, charterVersion])
   @@index([missionTemplateId])
   @@index([revenueStreamId, economicStatus])
+}
+
+model Company {
+  id                 String                @id
+  legalName          String
+  displayName        String
+  organizationNumber String                @unique
+  jurisdiction       String                @default("SE")
+  legalForm          String
+  status             String                @default("ACTIVE")
+  primaryLanguage    String                @default("sv")
+  reportingCurrency  String                @default("SEK")
+  operatingModel     String                @default("OWNER_OPERATED")
+  employeeCount      Int?
+  shareCapitalMinor  BigInt?
+  registeredAddress  Json?
+  postalAddress      Json?
+  registeredSeat     Json?
+  registrations      Json?
+  managingDirector   String?
+  description        String
+  sourceStatus       String                @default("OWNER_CONFIRMED")
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  activities         CompanyActivity[]
+  sources            CompanySource[]
+  facts              CompanyFact[]
+  constitutions      CompanyConstitution[]
+  projects           Project[]
+  missions           Mission[]
+
+  @@index([status])
+}
+
+model CompanyActivity {
+  id          String   @id @default(uuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category    String
+  name        String
+  description String?
+  registered  Boolean  @default(true)
+  status      String   @default("CAPABILITY")
+  createdAt   DateTime @default(now())
+
+  @@unique([companyId, category, name])
+  @@index([companyId, category])
+}
+
+model CompanySource {
+  id                 String    @id @default(uuid())
+  companyId          String
+  company            Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  sourceType         String
+  sourceUrl          String?
+  sourceAuthority    String
+  verificationStatus String
+  effectiveAt        DateTime?
+  retrievedAt        DateTime  @default(now())
+  contentHash        String?
+  notes              String?
+
+  @@index([companyId, verificationStatus])
+}
+
+model CompanyFact {
+  id                 String       @id @default(uuid())
+  companyId          String
+  company            Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  factType           String
+  value              Json
+  confidence         Float?
+  verificationStatus String       @default("PROPOSED")
+  validFrom          DateTime?
+  validUntil         DateTime?
+  supersededById     String?      @unique
+  supersededBy       CompanyFact? @relation("CompanyFactSupersession", fields: [supersededById], references: [id], onDelete: Restrict)
+  supersedes         CompanyFact? @relation("CompanyFactSupersession")
+  createdBy          String
+  createdAt          DateTime     @default(now())
+
+  @@index([companyId, factType, verificationStatus])
+}
+
+model CompanyConstitution {
+  id                   String               @id @default(uuid())
+  companyId            String
+  company              Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  version              Int
+  status               String               @default("DRAFT")
+  mission              String
+  values               String[]
+  strategicObjectives  String[]
+  humanOnlyDecisions   String[]
+  prohibitedActivities String[]
+  autonomousLimits     Json
+  dataAuthority        Json
+  securityPrinciples   String[]
+  escalationRules      String[]
+  emergencyProcedures  String[]
+  approvedBy           String?
+  approvedAt           DateTime?
+  supersedesId         String?              @unique
+  supersedes           CompanyConstitution? @relation("CompanyConstitutionSupersession", fields: [supersedesId], references: [id], onDelete: Restrict)
+  supersededBy         CompanyConstitution? @relation("CompanyConstitutionSupersession")
+  createdBy            String
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  @@unique([companyId, version])
+  @@index([companyId, status])
 }
 
 model MissionTask {
