@@ -16,3 +16,4 @@
 .workflow-message{color:#6eebc0;background:#12382d}
 .workflow-table .table-row{grid-template-columns:1fr 1fr .7fr 1.2fr;min-width:700px}
 .list-row .action-buttons{flex-wrap:wrap;justify-content:flex-end}
+.editorial-actions{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}.editorial-preview{white-space:pre-wrap;overflow:auto;max-height:65vh;padding:1rem;border:1px solid var(--line);border-radius:.75rem;background:var(--panel2);font:13px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace}.editorial-actions small{color:var(--red)}

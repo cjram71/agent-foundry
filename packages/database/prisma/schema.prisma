@@ -298,8 +298,49 @@ model Company {
   constitutions      CompanyConstitution[]
   projects           Project[]
   missions           Mission[]
+  editorialJobs      EditorialJob[]
 
   @@index([status])
+}
+
+enum EditorialStatus {
+  INBOX
+  DRAFTING
+  AWAITING_REVIEW
+  CHANGES_REQUESTED
+  APPROVED
+  PREPARING_PUBLICATION
+  READY_TO_PUBLISH
+  PUBLISHED
+  FAILED
+  CANCELLED
+}
+
+model EditorialJob {
+  id                  String          @id @default(uuid())
+  companyId           String
+  company             Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  title               String
+  status              EditorialStatus @default(INBOX)
+  sourcePath          String           @unique
+  draftPath           String?
+  approvedPath        String?
+  publicationPath     String?
+  sourceLanguage      String           @default("sv")
+  targetLanguages     String[]         @default(["sv", "en"])
+  destinations        String[]         @default(["website"])
+  instructions        String?
+  attempts            Int              @default(0)
+  errorMessage        String?
+  approvalRequestedAt DateTime?
+  approvedAt          DateTime?
+  approvedBy          String?
+  publishedAt         DateTime?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  @@index([companyId, status, createdAt])
+  @@index([status, updatedAt])
 }
 
 model CompanyActivity {

@@ -5,6 +5,7 @@ import { buildTaskDrafts, parseManagerPlan } from '@foundry/manager';
 import { classifyTaskRisk, asDeclaredRisk, evaluateAutonomy, isAutoApproveRisk, type AutonomyPolicyValues } from '@foundry/policy';
 import { EMERGENCY_STOP_KEY } from '@foundry/ops';
 import { emitTaskEvent, transitionTask } from '@foundry/state-machine';
+import { ingestInbox, processEditorialJobs } from './editorial';
 
 const prisma = new PrismaClient();
 const connection = process.env.REDIS_URL ? new IORedis(process.env.REDIS_URL, { maxRetriesPerRequest: null }) : new IORedis({ host: process.env.REDIS_HOST || '127.0.0.1', port: Number(process.env.REDIS_PORT || 6379), password: process.env.REDIS_PASSWORD || undefined, maxRetriesPerRequest: null });
@@ -129,6 +130,8 @@ async function tick(): Promise<void> {
     else if (task.projectRun?.executionApprovedAt) await processTask(task, policy, emergencyStop);
   }
   await finalizeRuns();
+  await ingestInbox(prisma);
+  await processEditorialJobs(prisma);
 }
 
 if (require.main === module) {
