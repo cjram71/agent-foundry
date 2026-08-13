@@ -4,32 +4,32 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 const sections = [
   [
-    "EXECUTIVE OFFICE",
+    "BOOSTA FÖRLAG",
     [
       ["/", "Home"],
-      ["/approvals", "Decisions"],
-      ["/businesses", "Company"],
+      ["/approvals", "My decisions"],
       ["/projects", "Projects"],
     ],
   ],
   [
-    "WORK IN PROGRESS",
+    "COMPANY WORK",
     [
-      ["/missions", "Company Missions"],
-      ["/tasks", "Tasks"],
+      ["/missions", "Plans & missions"],
+      ["/tasks", "Work tasks"],
       ["/results", "Results & Evidence"],
     ],
   ],
   [
-    "COMPANY KNOWLEDGE",
+    "KNOWLEDGE",
     [
       ["/intelligence/agents", "AI Workforce"],
-      ["/intelligence/knowledge", "Memory"],
+      ["/intelligence/knowledge", "Company memory"],
     ],
   ],
   [
-    "ADVANCED",
+    "SETTINGS",
     [
+      ["/businesses", "Company & constitution"],
       ["/intelligence/skills", "Skills"],
       ["/intelligence/workflows", "Workflows"],
       ["/platform/models-cost", "AI Cost"],
@@ -73,8 +73,8 @@ export default function Nav() {
       <div className="brand">
         <span className="brand-mark">B</span>
         <div>
-          <strong>Boosta OS</strong>
-          <small>Executive Office</small>
+          <strong>Boosta Förlag</strong>
+          <small>Company headquarters</small>
         </div>
       </div>
       <nav>

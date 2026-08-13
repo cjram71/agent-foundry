@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { requireDashboardAdmin } from '@/lib/dashboard/auth';
 import { addressLine, loadBoostaCompany } from '@/lib/company';
 import { Empty, OpsPage } from '@/components/ops-shell';
+import ConstitutionApproval from '@/components/constitution-approval';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +27,7 @@ export default async function CompanyPage() {
   return <OpsPage eyebrow="BOOSTA FÖRLAG AB" title="Your company" description="Verified facts, business capabilities and the rules that keep AI work under human control.">
     <section className="company-hero panel">
       <div><span className="company-status">{company.status}</span><h2>{company.legalName}</h2><p>{company.description}</p></div>
-      <div className="company-actions"><Link className="button primary" href="/missions">Start company discovery</Link><Link className="button secondary" href="/approvals">Review decisions</Link></div>
+      <div className="company-actions">{constitution?.status === 'ACTIVE' ? <Link className="button primary" href="/">Continue company setup</Link> : <ConstitutionApproval/>}<Link className="button secondary" href="/">Back to headquarters</Link></div>
     </section>
 
     <section className="company-facts">
@@ -40,7 +41,7 @@ export default async function CompanyPage() {
 
     <section className="grid-two company-grid">
       <div className="panel"><div className="panel-head"><div><h2>What Boosta can do</h2><p>Registered capabilities, grouped in business language</p></div></div><div className="capability-groups">{Object.entries(grouped).map(([category, activities]) => <div className="capability-group" key={category}><h3>{words(category)}</h3>{activities.map((activity) => <div key={activity.id}><strong>{activity.name}</strong>{activity.description ? <small>{activity.description}</small> : null}</div>)}</div>)}</div></div>
-      <div className="panel"><div className="panel-head"><div><h2>Human control</h2><p>Draft constitution · version {constitution?.version ?? 'not created'}</p></div><span className={`badge ${constitution?.status === 'ACTIVE' ? 'status-approved' : 'status-awaiting_plan_approval'}`}>{constitution?.status ?? 'MISSING'}</span></div>{constitution ? <><p className="constitution-mission">{constitution.mission}</p><h3 className="list-title">Always requires a human</h3><ul className="plain-list">{constitution.humanOnlyDecisions.map((decision) => <li key={decision}>{decision}</li>)}</ul><p className="draft-warning">The constitution is a draft. AI cannot activate or modify it.</p></> : <Empty>No constitution has been created.</Empty>}</div>
+      <div className="panel"><div className="panel-head"><div><h2>Human control</h2><p>Company constitution · version {constitution?.version ?? 'not created'}</p></div><span className={`badge ${constitution?.status === 'ACTIVE' ? 'status-approved' : 'status-awaiting_plan_approval'}`}>{constitution?.status ?? 'MISSING'}</span></div>{constitution ? <><p className="constitution-mission">{constitution.mission}</p><h3 className="list-title">Always requires a human</h3><ul className="plain-list">{constitution.humanOnlyDecisions.map((decision) => <li key={decision}>{decision}</li>)}</ul>{constitution.status === 'ACTIVE' ? <p className="active-notice">Active company rules. AI cannot modify them.</p> : <><p className="draft-warning">These rules are a draft and no company discovery will begin until you approve them.</p><ConstitutionApproval/></>}</> : <Empty>No constitution has been created.</Empty>}</div>
     </section>
 
     <section className="panel"><div className="panel-head"><div><h2>Company record</h2><p>What the operating system can currently prove</p></div></div><div className="record-grid"><Record label="Company facts" value={company._count.facts} detail="Structured facts with provenance"/><Record label="Sources" value={company.sources.length} detail="Recent evidence sources loaded"/><Record label="Projects" value={company._count.projects} detail="Company-scoped projects"/><Record label="Missions" value={company._count.missions} detail="Company-scoped missions"/></div><p className="source-note">Baseline status: {words(company.sourceStatus)}. Missing products, rights, contracts, customers and current financial records remain explicitly unknown until verified.</p></section>
