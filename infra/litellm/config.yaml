@@ -15,6 +15,11 @@ model_list:
     litellm_params:
       model: ollama/deepseek-coder-v2:16b-lite-instruct-q4_K_M
       api_base: os.environ/OLLAMA_URL
+  - model_name: nvidia-worker
+    litellm_params:
+      model: nvidia_nim/nvidia/nemotron-3-nano-30b-a3b
+      api_key: os.environ/NVIDIA_NIM_API_KEY
+      api_base: os.environ/NVIDIA_NIM_API_BASE
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
