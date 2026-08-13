@@ -1,27 +1,51 @@
-import Link from'next/link';import{redirect}from'next/navigation';import{getSession}from'@/lib/auth';import{loadLiveTodayDashboard}from'@/lib/dashboard/live';import CommandBar from'@/components/command-center-topbar';import LiveRefresh from'@/components/live-refresh';import type{Availability,ServiceStatus}from'@/lib/dashboard/types';
-export const dynamic='force-dynamic';
-const label=(value:string)=>value.replaceAll('_',' ').replace(/\b\w/g,c=>c.toUpperCase());
-const duration=(seconds:number|null)=>seconds===null?'Unknown':seconds<60?`${seconds}s`:seconds<3600?`${Math.floor(seconds/60)}m`:`${Math.floor(seconds/3600)}h ${Math.floor(seconds%3600/60)}m`;
-const money=(value:number|null)=>value===null?'Unknown':new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:2}).format(value);
-const number=(value:number|null)=>value===null?'Unknown':new Intl.NumberFormat('en-US').format(value);
-const stateClass=(value:string)=>`status-${value.toLowerCase().replaceAll(' ','_')}`;
-function unavailable(availability:Availability,reason?:string){return availability==='available'?null:<small className="data-state">{label(availability)}{reason?` · ${reason}`:''}</small>}
-export default async function Today(){const session=await getSession();if(!session)redirect('/login');if(session.role!=='ADMIN')return <div className="panel large-empty">Forbidden</div>;const data=await loadLiveTodayDashboard();const counts=data.counts.value,cost=data.cost.value,host=data.host.value;return <div className="page-stack command-center"><LiveRefresh/><CommandBar/>
- <header className="page-header today-heading"><div><p className="eyebrow">GIZMO COMMAND CENTER</p><h1>Today</h1><p>Live operational state, owner decisions, and execution evidence.</p></div><div className="observed">Updated {new Date(data.generatedAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</div></header>
- <section className="top-status-grid">
-  <Metric label="Gizmo status" value={label(data.status)} detail={data.emergencyStop.value===null?'Emergency stop unknown':data.emergencyStop.value?'Workers paused':'Control plane observed'} tone={data.status==='operational'?'green':data.status==='unknown'?'muted':'amber'}/>
-  <Metric label="Active missions" value={number(counts?.activeMissions??null)} detail="Authoritative mission records" tone="blue"/>
-  <Metric label="Active tasks" value={number(counts?.activeTasks??null)} detail={`${number(counts?.waitingTasks??null)} waiting · ${number(counts?.failedTasks??null)} failed`} tone="purple"/>
-  <Metric label="Approvals" value={number(counts?.pendingApprovals??null)} detail={`${number(counts?.redApprovals??null)} high-risk`} tone="amber"/>
-  <Metric label="Spend today" value={money(cost?.rateConfigured?cost.spendTodayUsd:null)} detail={cost?.rateConfigured?`${number(cost.tokensToday)} priced tokens`:'Token price not configured'} tone="green"/>
-  <Metric label="System health" value={data.services.availability==='unavailable'?'Unavailable':data.services.value?.some(service=>service.status==='unavailable')?'Degraded':'Observed'} detail={host&&Object.values(host).some(v=>v!==null)?'Host telemetry available':'Host metrics unknown'} tone="blue"/>
- </section>
- <section className="grid-two command-grid"><div className="panel attention-panel"><div className="panel-head"><div><h2>Attention required</h2><p>Owner actions and deterministic failures</p></div><span className="counter">{data.attention.value?.length??'Unknown'}</span></div>{unavailable(data.attention.availability,data.attention.reason)}<div className="attention-list">{data.attention.value?.map(item=><Link href={item.href} className={`attention-item severity-${item.severity}`} key={item.id}><span className="attention-severity">{item.severity}</span><div><strong>{item.title}</strong><p>{item.reason}</p><small>{duration(item.ageSeconds)} old · {item.ownerAction}</small></div><span>Open →</span></Link>)}{data.attention.value?.length===0&&<Empty text="No owner action required."/>}</div></div>
- <div className="panel pulse"><div className="panel-head"><div><h2>System pulse</h2><p>Bounded private service checks</p></div><Link href="/platform/system-health">Details</Link></div>{unavailable(data.services.availability,data.services.reason)}<div className="pulse-grid"><Pulse name="PostgreSQL" status={data.counts.availability==='available'?'operational':'unavailable'}/><Pulse name="Redis / BullMQ" status={data.queues.availability==='available'?'operational':'unavailable'}/>{data.services.value?.map(service=><Pulse key={service.id} name={service.label} status={service.status}/>)}</div><div className="pulse-facts"><span>Queue depth <strong>{data.queues.value?data.queues.value.reduce((sum,q)=>sum+q.waiting+q.active+q.delayed,0):'Unknown'}</strong></span><span>CPU <strong>{host?.cpuPercent===null||host?.cpuPercent===undefined?'Unknown':`${host.cpuPercent.toFixed(1)}%`}</strong></span><span>RAM <strong>{host?.memoryUsedBytes&&host.memoryTotalBytes?`${Math.round(host.memoryUsedBytes/host.memoryTotalBytes*100)}%`:'Unknown'}</strong></span><span>Backup age <strong>Unavailable</strong></span></div></div></section>
- <section className="panel"><div className="panel-head"><div><h2>Active missions</h2><p>Intent, execution progress, economics, and next action</p></div><Link href="/missions">View missions</Link></div>{unavailable(data.missions.availability,data.missions.reason)}<div className="mission-cards">{data.missions.value?.map(mission=><Link className="mission-card" href={`/missions/${mission.id}`} key={mission.id}><div className="mission-card-head"><div><span className="mono">{mission.id.slice(0,8)}</span><h3>{mission.goal}</h3><small>{mission.project||'No project'}{mission.businessId?` · Business ${mission.businessId}`:''}</small></div><span className={`badge ${stateClass(mission.status)}`}>{mission.status}</span></div><div className="progress"><span style={{width:`${mission.progress.total?mission.progress.completed/mission.progress.total*100:0}%`}}/></div><div className="mission-facts"><span>Phase <strong>{label(mission.phase)}</strong></span><span>Tasks <strong>{mission.progress.completed} / {mission.progress.total}</strong></span><span>Agent <strong>{mission.assignedAgent||'Unassigned'}</strong></span><span>Elapsed <strong>{duration(mission.elapsedSeconds)}</strong></span><span>Spend <strong>{money(mission.spendUsd)} / {money(mission.budgetUsd)}</strong></span><span>Tokens <strong>{number(mission.tokens)}</strong></span></div><p className="next-action"><b>Next:</b> {mission.nextAction}</p></Link>)}{data.missions.value?.length===0&&<Empty text="No active missions. Create a mission when there is authorized work to run."/>}</div></section>
- <section className="grid-two command-grid"><div className="panel"><div className="panel-head"><div><h2>Agent activity</h2><p>Registry state is separate from runtime evidence</p></div><Link href="/intelligence/agents">All agents</Link></div>{unavailable(data.agents.availability,data.agents.reason)}<div className="agent-list">{data.agents.value?.map(agent=><Link href={`/intelligence/agents/${agent.id}`} className="agent-row" key={agent.id}><span className={`agent-icon state-${agent.runtimeState}`}>{agent.name.split(' ').map(word=>word[0]).join('').slice(0,2)}</span><div><strong>{agent.name}</strong><small>{label(agent.registryStatus)} registry · {agent.currentTask?.title||'No current task'}</small></div><span className={`badge ${stateClass(agent.runtimeState)}`}>{label(agent.runtimeState)}</span></Link>)}</div></div>
- <div className="panel"><div className="panel-head"><div><h2>Recent activity</h2><p>Mission, task, attempt, and audit evidence</p></div><Link href="/results">Run log</Link></div>{unavailable(data.activity.availability,data.activity.reason)}<div className="activity-feed">{data.activity.value?.slice(0,12).map(event=><div className="activity-row" key={event.id}><time>{new Date(event.timestamp).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</time><span className="timeline-dot"/><div><strong>{label(event.title)}</strong><small>{event.actor} · {event.actorType}{event.taskId?` · Task ${event.taskId.slice(0,8)}`:''}</small></div></div>)}{data.activity.value?.length===0&&<Empty text="No retained mission or task activity."/>}</div></div></section>
- </div>}
-function Metric({label:metricLabel,value,detail,tone}:{label:string;value:string;detail:string;tone:string}){return <div className={`metric status-metric ${tone}`}><span>{metricLabel}</span><strong>{value}</strong><small>{detail}</small></div>}
-function Pulse({name,status}:{name:string;status:ServiceStatus}){return <div className="pulse-item"><span className={`pulse-dot pulse-${status}`}/><div><strong>{name}</strong><small>{label(status)}</small></div></div>}
-function Empty({text}:{text:string}){return <div className="empty">{text}</div>}
+import Link from 'next/link';
+import { redirect } from 'next/navigation';
+import { getSession } from '@/lib/auth';
+import { loadLiveTodayDashboard } from '@/lib/dashboard/live';
+import CommandBar from '@/components/command-center-topbar';
+import LiveRefresh from '@/components/live-refresh';
+
+export const dynamic = 'force-dynamic';
+
+const label = (value: string) => value.replaceAll('_', ' ').replace(/\b\w/g, (character) => character.toUpperCase());
+const number = (value: number | null) => value === null ? 'Not available' : new Intl.NumberFormat('en-US').format(value);
+const money = (value: number | null) => value === null ? 'Not configured' : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(value);
+const duration = (seconds: number | null) => seconds === null ? 'Unknown' : seconds < 60 ? `${seconds}s` : seconds < 3600 ? `${Math.floor(seconds / 60)}m` : `${Math.floor(seconds / 3600)}h`;
+
+export default async function ExecutiveHome() {
+  const session = await getSession();
+  if (!session) redirect('/login');
+  if (session.role !== 'ADMIN') return <div className="panel large-empty">You do not have access to the executive office.</div>;
+
+  const data = await loadLiveTodayDashboard();
+  const counts = data.counts.value;
+  const cost = data.cost.value;
+  const attention = data.attention.value ?? [];
+  const operatingNormally = data.status === 'operational' && data.emergencyStop.value === false;
+
+  return <div className="page-stack executive-home">
+    <LiveRefresh/><CommandBar/>
+    <header className="executive-welcome"><div><p className="eyebrow">BOOSTA EXECUTIVE OFFICE</p><h1>Good morning</h1><p>Here is what needs your attention and what the company is doing.</p></div><div className={`company-mode ${operatingNormally ? 'mode-ready' : 'mode-attention'}`}><span/>{operatingNormally ? 'Operations ready' : 'Check system status'}</div></header>
+
+    <section className="executive-question panel"><div><span className="question-icon">?</span><div><h2>What needs my attention?</h2><p>{attention.length === 0 ? 'Nothing requires a decision right now.' : `${attention.length} item${attention.length === 1 ? '' : 's'} need your decision or review.`}</p></div></div><Link href="/approvals" className="button primary">Open decisions</Link></section>
+
+    <section className="executive-metrics">
+      <ExecutiveMetric label="Decisions waiting" value={number(counts?.pendingApprovals ?? null)} detail={`${number(counts?.redApprovals ?? null)} high priority`} tone="amber"/>
+      <ExecutiveMetric label="Company missions" value={number(counts?.activeMissions ?? null)} detail="Approved work in progress" tone="blue"/>
+      <ExecutiveMetric label="Work in progress" value={number(counts?.activeTasks ?? null)} detail={`${number(counts?.failedTasks ?? null)} need recovery`} tone="purple"/>
+      <ExecutiveMetric label="AI cost today" value={cost?.rateConfigured ? money(cost.spendTodayUsd) : 'Rates not set'} detail={cost?.rateConfigured ? `${number(cost.tokensToday)} priced tokens` : 'Set rates before financial reporting'} tone="green"/>
+    </section>
+
+    <section className="grid-two executive-grid">
+      <div className="panel"><div className="panel-head"><div><h2>Decisions and exceptions</h2><p>Only items that need a human</p></div><Link href="/approvals">View all</Link></div><div className="attention-list">{attention.slice(0, 6).map((item) => <Link href={item.href} className={`attention-item severity-${item.severity}`} key={item.id}><span className="attention-severity">{item.severity}</span><div><strong>{item.title}</strong><p>{item.reason}</p><small>{duration(item.ageSeconds)} old · {item.ownerAction}</small></div><span>Review →</span></Link>)}{attention.length === 0 ? <FriendlyEmpty title="You are caught up" text="The AI workforce will continue only within its approved limits."/> : null}</div></div>
+      <div className="panel next-panel"><div className="panel-head"><div><h2>Suggested next steps</h2><p>A simple starting point for Boosta</p></div></div><ol className="next-steps"><li><span>1</span><div><strong>Review the company profile</strong><p>Confirm the imported facts and registered capabilities.</p><Link href="/businesses">Open company →</Link></div></li><li><span>2</span><div><strong>Approve the constitution</strong><p>Decide the limits the AI workforce must obey.</p><Link href="/businesses">Review controls →</Link></div></li><li><span>3</span><div><strong>Run company discovery</strong><p>Inventory products, rights, contracts, channels and missing information.</p><Link href="/missions">Open missions →</Link></div></li></ol></div>
+    </section>
+
+    <section className="panel"><div className="panel-head"><div><h2>Work underway</h2><p>Approved company missions and their next action</p></div><Link href="/missions">All missions</Link></div><div className="mission-cards">{data.missions.value?.slice(0, 4).map((mission) => <Link className="mission-card" href={`/missions/${mission.id}`} key={mission.id}><div className="mission-card-head"><div><span className="mono">{mission.id.slice(0, 8)}</span><h3>{mission.goal}</h3><small>{mission.project || 'Company mission'}</small></div><span className="badge">{label(mission.status)}</span></div><div className="progress"><span style={{ width: `${mission.progress.total ? mission.progress.completed / mission.progress.total * 100 : 0}%` }}/></div><p className="next-action"><b>Next:</b> {mission.nextAction}</p></Link>)}{data.missions.value?.length === 0 ? <FriendlyEmpty title="No active missions" text="Work starts only after a mission and its required approvals exist."/> : null}</div></section>
+
+    <section className="system-summary"><span><b>System:</b> {label(data.status)}</span><span><b>Emergency stop:</b> {data.emergencyStop.value ? 'Active' : data.emergencyStop.value === false ? 'Ready' : 'Unknown'}</span><Link href="/platform/system-health">Technical details →</Link></section>
+  </div>;
+}
+
+function ExecutiveMetric({ label: metricLabel, value, detail, tone }: { label: string; value: string; detail: string; tone: string }) { return <div className={`metric executive-metric ${tone}`}><span>{metricLabel}</span><strong>{value}</strong><small>{detail}</small></div>; }
+function FriendlyEmpty({ title, text }: { title: string; text: string }) { return <div className="friendly-empty"><span>✓</span><div><strong>{title}</strong><p>{text}</p></div></div>; }
