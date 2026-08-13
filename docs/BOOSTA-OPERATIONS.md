@@ -3,7 +3,7 @@
 ## Daily operation
 
 1. Open **Content pipeline** in the Boosta dashboard.
-2. Put a Markdown assignment in `/srv/boosta/work/inbox/`.
+2. Put a Markdown assignment in `$BOOSTA_WORKSPACE_ROOT/work/inbox/`. The current VPS uses `/home/cory/boosta/work/inbox/`.
 3. Within 15 seconds the autonomy service moves it to `work/processing/`, creates a durable job, and generates Swedish and English drafts.
 4. Review the draft in the dashboard or `work/review/`.
 5. Select **Approve draft** or **Regenerate**. Approval creates a package in `work/publish-ready/`; it does not publish externally.
@@ -17,7 +17,7 @@
 
 ## Storage contract
 
-`BOOSTA_WORKSPACE_ROOT` is the only canonical root. Mount the NAS there when available. Until then, the VPS directory is authoritative and must be backed up.
+`BOOSTA_WORKSPACE_ROOT` is the only canonical root. Production currently sets it to `/home/cory/boosta`. Mount the NAS there, or change this one variable to the future mount path. Until then, the VPS directory is authoritative and must be backed up.
 
 ## Publication adapters
 
