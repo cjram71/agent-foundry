@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { getSession, isSameOrigin } from '@/lib/auth';
 import { compileOperatorMission } from '@/lib/mission-policy';
 import { charterCeiling, validateMissionContract } from '@foundry/mission';
+import { BOOSTA_COMPANY_ID } from '@/lib/company';
 
 async function requireAdmin(request?: Request) {
   const session = await getSession();
@@ -16,6 +17,7 @@ export async function GET() {
   const auth = await requireAdmin();
   if (auth.error) return auth.error;
   return NextResponse.json(await prisma.mission.findMany({
+    where: { companyId: BOOSTA_COMPANY_ID },
     orderBy: { createdAt: 'desc' },
     take: 100,
     include: { project: { select: { name: true } }, _count: { select: { tasks: true, approvals: true, events: true } } },
@@ -28,7 +30,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     if (typeof body.projectId !== 'string') return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
-    const project = await prisma.project.findUnique({ where: { id: body.projectId }, include: { policies: { where: { active: true }, orderBy: { version: 'desc' }, take: 1 } } });
+    const project = await prisma.project.findFirst({ where: { id: body.projectId, companyId: BOOSTA_COMPANY_ID }, include: { policies: { where: { active: true }, orderBy: { version: 'desc' }, take: 1 } } });
     if (!project?.authorisedStatus) return NextResponse.json({ error: 'Project must be authorized' }, { status: 409 });
     const charter = await prisma.foundryCharter.findFirst({ where: { status: 'active' } });
     if (!charter) return NextResponse.json({ error: 'An active Foundry Charter is required' }, { status: 409 });

@@ -9,6 +9,7 @@ import { parseManagerPlan, buildTaskDrafts } from '@foundry/manager';
 import { loadActivePolicy } from '@/lib/policy';
 import { parseChangeRequestNote } from '@/lib/change-request';
 import { checkSpendGuard } from '@/lib/cost';
+import { BOOSTA_COMPANY_ID } from '@/lib/company';
 import { planJobId, executeJobId } from '@/lib/queue-policy';
 type PullRequestStatus = { state: string; mergedAt: string | null; isDraft: boolean; statusCheckRollup: Array<{ status?: string; conclusion?: string; state?: string }> };
 function runGitHub(args: string[]): Promise<string> { return new Promise((resolve,reject)=>{const child=spawn('gh',args,{shell:false,windowsHide:true,env:{...process.env,GH_PROMPT_DISABLED:'1'},stdio:['ignore','pipe','pipe'],timeout:30000});let stdout='',stderr='';child.stdout.on('data',c=>stdout+=c.toString());child.stderr.on('data',c=>stderr+=c.toString());child.on('error',reject);child.on('close',code=>code===0?resolve(stdout):reject(new Error(stderr.slice(0,500))));}); }
@@ -33,7 +34,7 @@ async function projectAgentFor(task: { projectId: string; assignedAgent: string 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await authorize(request); if (auth.error) return auth.error;
   const { id } = await params; const body = await request.json();
-  const current = await prisma.task.findUnique({ where: { id }, include: { project: true } });
+  const current = await prisma.task.findFirst({ where: { id, project: { companyId: BOOSTA_COMPANY_ID } }, include: { project: true } });
   if (!current) return NextResponse.json({ error: 'Task not found.' }, { status: 404 });
   if (body.action === 'check_status') {
     if (!current.pullRequestUrl) return NextResponse.json({ error: 'This task does not have a pull request yet.' }, { status: 409 });
