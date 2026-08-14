@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && node ../../scripts/prepare-dashboard-standalone.mjs",
     "start": "next start",
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --env-file-if-exists=../../.env --experimental-strip-types --experimental-loader ./src/lib/__tests__/ts-resolve-loader.mjs --test --test-force-exit \"src/lib/__tests__/*.test.ts\" \"src/app/api/__tests__/*.test.ts\""

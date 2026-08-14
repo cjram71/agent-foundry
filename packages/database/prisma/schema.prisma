@@ -300,10 +300,63 @@ model Company {
   projects           Project[]
   missions           Mission[]
   editorialJobs      EditorialJob[]
+  departments        CompanyDepartment[]
+  companyAgents      CompanyAgent[]
 
   @@index([status])
 }
 
+model CompanyDepartment {
+  id               String         @id
+  companyId        String
+  company          Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  code             String
+  name             String
+  purpose          String
+  executiveRole    String
+  status           String         @default("ACTIVE")
+  authorityLevel   String         @default("ADVISORY")
+  budgetLimitMinor BigInt         @default(0)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  agents           CompanyAgent[]
+
+  @@unique([companyId, code])
+  @@index([companyId, status])
+}
+
+model CompanyAgent {
+  id                    String            @id
+  companyId             String
+  company               Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  departmentId          String
+  department            CompanyDepartment @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  managerId             String?
+  manager               CompanyAgent?     @relation("CompanyAgentManagement", fields: [managerId], references: [id], onDelete: Restrict)
+  subordinates          CompanyAgent[]    @relation("CompanyAgentManagement")
+  name                  String
+  role                  String
+  purpose               String
+  responsibilities      String[]
+  capabilities          Json
+  permissions           Json
+  tools                 String[]
+  dataAccess            Json
+  financialLimitMinor   BigInt            @default(0)
+  externalActionLimit   Json
+  riskLevel             String
+  model                 String
+  version               String            @default("1.0.0")
+  status                String            @default("STAGING")
+  expiresAt             DateTime?
+  createdBy             String
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  @@index([companyId, status])
+  @@index([departmentId, status])
+  @@index([managerId])
+}
 enum EditorialStatus {
   INBOX
   DRAFTING
@@ -432,7 +485,7 @@ model MissionTask {
   missionId String
   mission   Mission  @relation(fields: [missionId], references: [id], onDelete: Cascade)
   taskId    String   @unique
-  task      Task     @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
   sequence  Int
   createdAt DateTime @default(now())
 

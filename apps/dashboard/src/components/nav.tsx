@@ -7,6 +7,7 @@ const sections = [
     "BOOSTA FÖRLAG",
     [
       ["/", "Home"],
+      ["/ceo", "AI CEO"],
       ["/approvals", "My decisions"],
       ["/projects", "Workspaces"],
       ["/editorial", "Content pipeline"],
@@ -24,6 +25,7 @@ const sections = [
     "KNOWLEDGE",
     [
       ["/intelligence/agents", "AI Workforce"],
+      ["/workforce", "Departments"],
       ["/intelligence/knowledge", "Company memory"],
     ],
   ],
