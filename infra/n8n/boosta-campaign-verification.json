@@ -1,0 +1,29 @@
+{
+  "id": "BoostaCampaignVerify01",
+  "name": "Boosta Campaign Verification",
+  "active": true,
+  "versionId": "6ff43625-4d1f-49bd-a6fe-1b1fefce232f",
+  "nodes": [
+    {
+      "parameters": {"httpMethod": "POST", "path": "boosta-campaign-verify", "responseMode": "lastNode", "options": {}},
+      "id": "6de27e40-f20e-4a08-a989-5f5c15bcf949",
+      "name": "Approved Campaign Package",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [260, 300],
+      "webhookId": "5d43aa32-197f-454b-a397-366602320544"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $json.body ?? $json;\nconst required = ['missionId','editorialJobId','title','draftChecksum'];\nfor (const key of required) if (typeof input[key] !== 'string' || !input[key].trim()) throw new Error(`Missing ${key}`);\nif (!/^[a-f0-9]{64}$/i.test(input.draftChecksum)) throw new Error('Invalid draft checksum');\nif (!Array.isArray(input.destinations) || input.destinations.length === 0) throw new Error('Destinations are required');\nif (!Array.isArray(input.targetLanguages) || input.targetLanguages.length === 0) throw new Error('Target languages are required');\nreturn [{json:{status:'verified',workflow:'boosta-campaign-verification@1.0.0',checkedAt:new Date().toISOString(),missionId:input.missionId,editorialJobId:input.editorialJobId,draftChecksum:input.draftChecksum}}];"
+      },
+      "id": "c865c174-68c4-49c3-922a-bc9a8d93b93e",
+      "name": "Verify Approved Package",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 300]
+    }
+  ],
+  "connections": {"Approved Campaign Package": {"main": [[{"node": "Verify Approved Package", "type": "main", "index": 0}]]}},
+  "settings": {"executionOrder": "v1"}
+}

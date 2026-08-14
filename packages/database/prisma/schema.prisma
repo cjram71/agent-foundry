@@ -261,6 +261,7 @@ model Mission {
   approvals            MissionApproval[]
   events               MissionEvent[]
 
+  editorialJob         EditorialJob?
   @@index([projectId, status])
   @@index([companyId, status])
   @@index([businessId, status])
@@ -320,6 +321,8 @@ model EditorialJob {
   id                  String          @id @default(uuid())
   companyId           String
   company             Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  missionId           String?         @unique
+  mission             Mission?        @relation(fields: [missionId], references: [id], onDelete: SetNull)
   title               String
   status              EditorialStatus @default(INBOX)
   sourcePath          String           @unique
@@ -337,6 +340,8 @@ model EditorialJob {
   approvedBy          String?
   publishedAt         DateTime?
   createdAt           DateTime         @default(now())
+  verifiedAt          DateTime?
+  verification        Json?
   updatedAt           DateTime         @updatedAt
 
   @@index([companyId, status, createdAt])

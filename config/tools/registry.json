@@ -10,6 +10,8 @@
   {"id":"modify-firewall","description":"Modify host firewall policy","risk":"red","sideEffect":true,"approvalRequired":true,"executor":"human-only"},
   {"id":"rotate-secret","description":"Rotate a production secret","risk":"red","sideEffect":true,"approvalRequired":true,"executor":"human-only"},
   {"id":"delete-volume","description":"Delete a persistent Docker volume","risk":"red","sideEffect":true,"approvalRequired":true,"executor":"human-only"},
+  {"id":"invoke-n8n-campaign-verification","description":"Invoke the bounded Boosta campaign verification workflow after human draft approval","risk":"yellow","sideEffect":true,"approvalRequired":false,"executor":"workflow-gateway"},
+  {"id":"publish-external","description":"Publish content to an external destination","risk":"red","sideEffect":true,"approvalRequired":true,"executor":"human-only"},
   {"id":"unrestricted-root-shell","description":"Unrestricted root shell","risk":"black","sideEffect":true,"approvalRequired":true,"executor":"never"},
   {"id":"docker-socket","description":"Access the rootful host Docker socket","risk":"black","sideEffect":true,"approvalRequired":true,"executor":"never"},
   {"id":"disable-audit-logs","description":"Disable or erase audit logging","risk":"black","sideEffect":true,"approvalRequired":true,"executor":"never"},
