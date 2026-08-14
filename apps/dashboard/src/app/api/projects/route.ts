@@ -6,9 +6,10 @@ import { enqueuePlan } from '@/lib/queue';
 import { transitionTask, emitTaskEvent } from '@foundry/state-machine';
 import { isPolicyCeiling } from '@foundry/policy';
 import { checkSpendGuard } from '@/lib/cost';
+import { BOOSTA_COMPANY_ID } from '@/lib/company';
 
 async function requireAdmin(request?: Request) { const session=await getSession();if(!session)return{error:NextResponse.json({error:'Unauthorized'},{status:401})};if(session.role!=='ADMIN')return{error:NextResponse.json({error:'Forbidden'},{status:403})};if(request&&!isSameOrigin(request))return{error:NextResponse.json({error:'Invalid origin'},{status:403})};return{session}; }
-export async function GET(){const auth=await requireAdmin();if(auth.error)return auth.error;return NextResponse.json(await prisma.project.findMany({orderBy:{createdAt:'desc'},include:{_count:{select:{tasks:true}}}}));}
+export async function GET(){const auth=await requireAdmin();if(auth.error)return auth.error;return NextResponse.json(await prisma.project.findMany({where:{companyId:BOOSTA_COMPANY_ID},orderBy:{createdAt:'desc'},include:{_count:{select:{tasks:true}}}}));}
 export async function POST(request:Request){const auth=await requireAdmin(request);if(auth.error)return auth.error;return NextResponse.json({error:'Boosta OS is a single-company system. Workspaces are created only by approved company workflows.'},{status:405,headers:{Allow:'GET, PATCH'}});}
 export async function PATCH(request:Request){try{const auth=await requireAdmin(request);if(auth.error)return auth.error;const body=await request.json();if(typeof body.id!=='string')return NextResponse.json({error:'Project id is required'},{status:400});if(body.action==='authorize'||body.action==='deauthorize'){
   const authorisedStatus=body.action==='authorize';
