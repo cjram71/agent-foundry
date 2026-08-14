@@ -21,7 +21,7 @@ async function nvidia(prompt: string): Promise<KnowledgeGeneration> {
 }
 
 async function ollama(prompt: string, reasoning = false): Promise<KnowledgeGeneration> {
-  const model = reasoning ? (process.env.OLLAMA_REASONING_MODEL || 'deepseek-r1:8b') : (process.env.OLLAMA_MODEL || 'qwen3:8b');
+  const model = reasoning ? (process.env.OLLAMA_REASONING_MODEL || 'deepseek-r1:8b') : (process.env.OLLAMA_KNOWLEDGE_MODEL || 'qwen3:8b');
   const base = (process.env.OLLAMA_URL || 'http://127.0.0.1:11434').replace(/\/$/, '');
   const response = await fetch(`${base}/api/generate`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model, prompt, stream: false, format: 'json', options: { temperature: 0.2, num_ctx: 16_384 } }), signal: timeout() });
   const body = await response.json() as { response?: string; prompt_eval_count?: number; eval_count?: number; error?: string };
