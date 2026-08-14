@@ -19,19 +19,31 @@ export function campaignVerificationPayload(job: Pick<EditorialJob, 'id'|'missio
   return { missionId: job.missionId, editorialJobId: job.id, title: job.title, destinations: job.destinations, targetLanguages: job.targetLanguages, draftChecksum };
 }
 
-export function parseCampaignVerification(value: unknown) {
+export interface CampaignVerificationExpected { missionId: string; editorialJobId: string; draftChecksum: string; requestedAt?: number }
+
+export function parseCampaignVerification(value: unknown, expected?: CampaignVerificationExpected) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('n8n campaign verification returned malformed evidence');
   const result = value as Record<string, unknown>;
   if (result.status !== 'verified' || typeof result.workflow !== 'string' || !result.workflow) throw new Error('n8n campaign verification did not verify the package');
-  return { status: 'verified', workflow: result.workflow, checkedAt: typeof result.checkedAt === 'string' ? result.checkedAt : new Date().toISOString() };
+  if (typeof result.checkedAt !== 'string' || !Number.isFinite(Date.parse(result.checkedAt))) throw new Error('n8n campaign verification returned an invalid timestamp');
+  if (expected) {
+    for (const key of ['missionId','editorialJobId','draftChecksum'] as const) if (result[key] !== expected[key]) throw new Error(`n8n campaign verification returned mismatched ${key}`);
+    const checkedAt = Date.parse(result.checkedAt), requestedAt = expected.requestedAt ?? Date.now();
+    if (checkedAt < requestedAt - 30_000 || checkedAt > Date.now() + 30_000) throw new Error('n8n campaign verification timestamp is outside the request window');
+  }
+  return { status: 'verified', workflow: result.workflow, checkedAt: result.checkedAt };
 }
 
 async function verifyCampaign(job: EditorialJob, draftChecksum: string) {
   const url = process.env.N8N_CAMPAIGN_WEBHOOK_URL;
   if (!url) throw new Error('N8N_CAMPAIGN_WEBHOOK_URL is not configured');
-  const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(campaignVerificationPayload(job, draftChecksum)), signal: AbortSignal.timeout(15_000) });
+  const payload = campaignVerificationPayload(job, draftChecksum), requestedAt = Date.now();
+  console.log('[editorial] n8n verification started', { missionId: payload.missionId, editorialJobId: payload.editorialJobId });
+  const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload), signal: AbortSignal.timeout(15_000) });
   if (!response.ok) throw new Error(`n8n campaign verification failed with HTTP ${response.status}`);
-  return parseCampaignVerification(await response.json());
+  const verification = parseCampaignVerification(await response.json(), { missionId: payload.missionId, editorialJobId: payload.editorialJobId, draftChecksum, requestedAt });
+  console.log('[editorial] n8n verification succeeded', { missionId: payload.missionId, editorialJobId: payload.editorialJobId, workflow: verification.workflow, checkedAt: verification.checkedAt });
+  return verification;
 }
 
 export async function ingestInbox(prisma: PrismaClient, root = workspaceRoot()) {
