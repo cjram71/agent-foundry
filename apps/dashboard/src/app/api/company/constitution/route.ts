@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession, isSameOrigin } from '@/lib/auth';
 import prisma from '@/lib/prisma';
-import { BOOSTA_COMPANY_ID } from '@/lib/company';
+import { BOOSTA_COMPANY_ID, ensureBoostaCompany } from '@/lib/company';
 
 export async function POST(request: Request) {
   const session = await getSession();
@@ -9,6 +9,7 @@ export async function POST(request: Request) {
   if (session.role !== 'ADMIN') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   if (!isSameOrigin(request)) return NextResponse.json({ error: 'Invalid origin' }, { status: 403 });
 
+  await ensureBoostaCompany();
   const body = await request.json().catch(() => null);
   if (body?.confirmation !== 'APPROVE BOOSTA CONSTITUTION') {
     return NextResponse.json({ error: 'Explicit constitution confirmation is required' }, { status: 400 });

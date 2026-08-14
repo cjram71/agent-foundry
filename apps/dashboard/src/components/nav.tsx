@@ -30,7 +30,7 @@ const sections = [
   [
     "SETTINGS",
     [
-      ["/businesses", "Company & constitution"],
+      ["/businesses", "Company identity & rules"],
       ["/intelligence/skills", "Skills"],
       ["/intelligence/workflows", "Workflows"],
       ["/platform/models-cost", "AI Cost"],
