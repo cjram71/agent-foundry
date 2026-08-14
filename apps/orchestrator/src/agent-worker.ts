@@ -46,7 +46,7 @@ export function startKnowledgeAgentWorker(prisma: PrismaClient, connection: IORe
     await transitionTask(prisma, { taskId: task.id, to: 'RUNNING', actor: manifest.id, actorType: 'worker', reason: 'approved governed agent run started', legacyStatus: 'coding' });
     const startedAt = new Date();
     try {
-      const response = await generateKnowledge(prompt, isBoostaCeo ? 'synthesis' : 'public-research');
+      const response = await generateKnowledge(prompt, isBoostaCeo ? 'synthesis' : 'public-research', text => { parseKnowledgeAgentResult(text); });
       const result = parseKnowledgeAgentResult(response.text);
       const safeArtifact = redactForModel(result.artifact);
       const safeCandidates = result.memoryCandidates.map(item => ({ ...item, content: redactForModel(item.content).value }));

@@ -1,4 +1,6 @@
 export type KnowledgeWork = 'public-research' | 'private-analysis' | 'synthesis';
+class InvalidModelOutput extends Error {}
+
 export type KnowledgeGeneration = { text: string; tokens: number; provider: 'openai' | 'nvidia' | 'ollama'; model: string; fallbackCount: number };
 
 type ChatBody = { choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number }; model?: string; error?: { message?: string } };
@@ -44,7 +46,7 @@ async function openai(prompt: string, webSearch: boolean): Promise<KnowledgeGene
   return { text: text.trim(), tokens: body.usage?.total_tokens || 0, provider: 'openai', model: body.model || model, fallbackCount: 0 };
 }
 
-export async function generateKnowledge(prompt: string, work: KnowledgeWork): Promise<KnowledgeGeneration> {
+export async function generateKnowledge(prompt: string, work: KnowledgeWork, validate?: (text: string) => void): Promise<KnowledgeGeneration> {
   const routes = work === 'public-research'
     ? [() => openai(prompt, true)]
     : work === 'private-analysis'
@@ -52,8 +54,14 @@ export async function generateKnowledge(prompt: string, work: KnowledgeWork): Pr
       : [() => nvidia(prompt), () => ollama(prompt, true), () => openai(prompt, false)];
   let last: unknown;
   for (let index = 0; index < routes.length; index++) {
-    try { const result = await routes[index](); return { ...result, fallbackCount: index }; }
-    catch (error) { last = error; if (!transient(error) && !/not configured/i.test(error instanceof Error ? error.message : String(error))) throw error; }
+    try {
+      const result = await routes[index]();
+      if (validate) { try { validate(result.text); } catch (error) { throw new InvalidModelOutput(error instanceof Error ? error.message : 'invalid model output'); } }
+      return { ...result, fallbackCount: index };
+    } catch (error) {
+      last = error;
+      if (!(error instanceof InvalidModelOutput) && !transient(error) && !/not configured/i.test(error instanceof Error ? error.message : String(error))) throw error;
+    }
   }
   throw last instanceof Error ? last : new Error('No knowledge model was available');
 }
