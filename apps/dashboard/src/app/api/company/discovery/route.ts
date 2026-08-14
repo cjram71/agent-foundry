@@ -21,7 +21,7 @@ export async function POST(request: Request) {
   if (body.confirmation !== 'START READ-ONLY BOOSTA DISCOVERY') return NextResponse.json({ error: 'Explicit discovery confirmation is required' }, { status: 400 });
   const company = await prisma.company.findUnique({ where: { id: BOOSTA_COMPANY_ID }, include: { constitutions: { where: { status: 'ACTIVE' }, take: 1 } } });
   if (!company?.constitutions.length) return NextResponse.json({ error: 'Approve the Boosta constitution first' }, { status: 409 });
-  const existing = await prisma.mission.findFirst({ where: { companyId: company.id, provenance: BOOSTA_DISCOVERY_PROVENANCE, status: { notIn: ['completed', 'rejected', 'cancelled', 'failed'] } } });
+  const existing = await prisma.mission.findFirst({ where: { companyId: company.id, provenance: BOOSTA_DISCOVERY_PROVENANCE,  } });
   if (existing) return NextResponse.json({ missionId: existing.id, unchanged: true });
   const charter = await prisma.foundryCharter.findFirst({ where: { status: 'active' }, orderBy: { version: 'desc' } });
   if (!charter) return NextResponse.json({ error: 'The active Foundry Charter is required' }, { status: 409 });
