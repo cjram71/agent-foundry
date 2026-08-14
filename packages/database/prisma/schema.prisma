@@ -262,6 +262,7 @@ model Mission {
   events               MissionEvent[]
 
   editorialJob         EditorialJob?
+  opportunities        Opportunity[]
   @@index([projectId, status])
   @@index([companyId, status])
   @@index([businessId, status])
@@ -271,6 +272,65 @@ model Mission {
   @@index([revenueStreamId, economicStatus])
 }
 
+model Opportunity {
+  id                    String                @id @default(uuid())
+  companyId             String
+  company               Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  missionId             String?
+  mission               Mission?              @relation(fields: [missionId], references: [id], onDelete: SetNull)
+  title                 String
+  description           String
+  source                String
+  customer              String
+  market                String
+  problem               String
+  proposedSolution      String
+  evidence              String[]
+  scores                Json
+  totalScore            Int
+  confidence            Int
+  evidenceQuality       String
+  unknowns              String[]
+  recommendedExperiment String
+  status                String                @default("CANDIDATE")
+  createdBy             String
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  redTeam               OpportunityRedTeam?
+  decisions             OpportunityDecision[]
+  @@index([companyId, status, createdAt])
+}
+model OpportunityRedTeam {
+  id                    String      @id @default(uuid())
+  opportunityId         String      @unique
+  opportunity           Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  reviewerAgentId       String
+  failureModes          String[]
+  challengedAssumptions String[]
+  evidence              String[]
+  cheapestDisproof      String
+  securityRisks         String[]
+  legalRisks            String[]
+  economicRisks         String[]
+  createdBy             String
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+}
+model OpportunityDecision {
+  id            String      @id @default(uuid())
+  opportunityId String
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  decision      String
+  rationale     String
+  options       String[]
+  assumptions   String[]
+  expectedResult String?
+  actualResult  String?
+  lesson        String?
+  decidedBy     String
+  decidedAt     DateTime    @default(now())
+  @@index([opportunityId, decidedAt])
+}
 model Company {
   id                 String                @id
   legalName          String
@@ -302,6 +362,7 @@ model Company {
   editorialJobs      EditorialJob[]
   departments        CompanyDepartment[]
   companyAgents      CompanyAgent[]
+  opportunities      Opportunity[]
 
   @@index([status])
 }

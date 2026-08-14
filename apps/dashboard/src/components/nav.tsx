@@ -9,6 +9,7 @@ const sections = [
       ["/", "Home"],
       ["/ceo", "AI CEO"],
       ["/approvals", "My decisions"],
+      ["/opportunities", "Opportunities"],
       ["/projects", "Workspaces"],
       ["/editorial", "Content pipeline"],
     ],
