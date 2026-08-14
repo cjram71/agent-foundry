@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "start": "node dist/worker.js",
+    "start": "node --env-file=../../.env dist/worker.js",
     "build": "tsc",
     "test": "npm run build && node --test dist/*.test.js"
   },
