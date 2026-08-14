@@ -12,7 +12,7 @@ export async function GET(){const auth=await requireAdmin();if(auth.error)return
 export async function POST(request:Request){const auth=await requireAdmin(request);if(auth.error)return auth.error;return NextResponse.json({error:'Boosta OS is a single-company system. Workspaces are created only by approved company workflows.'},{status:405,headers:{Allow:'GET, PATCH'}});}
 export async function PATCH(request:Request){try{const auth=await requireAdmin(request);if(auth.error)return auth.error;const body=await request.json();if(typeof body.id!=='string')return NextResponse.json({error:'Project id is required'},{status:400});if(body.action==='authorize'||body.action==='deauthorize'){
   const authorisedStatus=body.action==='authorize';
-  if(authorisedStatus&&project.projectType!=='company_discovery'){
+  if(authorisedStatus){
     const spend=await checkSpendGuard(body.id);
     if(!spend.allowed){await prisma.auditEvent.create({data:{actor:auth.session!.userId,action:'cost.spend_blocked',target:body.id,result:'rejected',metadata:{stage:'authorize_manager_evaluation',spendUsd:spend.spendUsd,limitUsd:spend.limitUsd}}});return NextResponse.json({error:spend.reason},{status:409});}
   }
