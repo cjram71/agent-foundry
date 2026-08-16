@@ -173,6 +173,7 @@ model Project {
   missions            Mission[]
   projectAgents       ProjectAgent[]
   plans               ProjectPlan[]
+  products            Product[]
 
   @@index([companyId, createdAt])
   @@index([companyId, governanceStatus])
@@ -401,6 +402,12 @@ model Company {
   departments        CompanyDepartment[]
   companyAgents      CompanyAgent[]
   opportunities      Opportunity[]
+  products           Product[]
+  marketingCampaigns MarketingCampaign[]
+  salesOpportunities SalesOpportunity[]
+  customerAccounts   CustomerAccount[]
+  customerCases      CustomerCase[]
+  businessFeedback   BusinessFeedback[]
 
   @@index([status])
 }
@@ -998,4 +1005,196 @@ model AgentRunReport {
 
   @@index([projectAgentId, createdAt])
   @@index([taskId])
+}
+
+model Product {
+  id                String   @id @default(uuid())
+  companyId         String
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projectId         String?
+  project           Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  name              String
+  productType       String
+  lifecycleStage    String   @default("IDEA")
+  description       String
+  owner             String
+  currency          String   @default("SEK")
+  priceMinor        BigInt?
+  launchApprovedBy  String?
+  launchApprovedAt  DateTime?
+  launchedAt        DateTime?
+  createdBy         String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  qualityGates      ProductQualityGate[]
+  rights             ProductRights[]
+  campaigns         MarketingCampaign[]
+  feedback           BusinessFeedback[]
+
+  @@index([companyId, lifecycleStage])
+  @@index([projectId, lifecycleStage])
+}
+
+model ProductQualityGate {
+  id          String   @id @default(uuid())
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  gate        String
+  status      String   @default("PENDING")
+  evidence    String[]
+  checkedBy   String?
+  checkedAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([productId, gate])
+  @@index([productId, status])
+}
+
+model ProductRights {
+  id               String   @id @default(uuid())
+  productId        String
+  product          Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  ownership        String
+  authors          String[]
+  version          String
+  formats          String[]
+  territories      String[]
+  licensingTerms   String?
+  royaltyTerms     String?
+  copyrightNotice  String
+  evidence         String[]
+  approvedBy       String?
+  approvedAt       DateTime?
+  createdBy        String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([productId, createdAt])
+}
+
+model MarketingCampaign {
+  id                    String   @id @default(uuid())
+  companyId             String
+  company               Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  productId             String?
+  product               Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  name                  String
+  objective             String
+  audience              String
+  status                String   @default("DRAFT")
+  approvedBudgetMinor   BigInt   @default(0)
+  spentMinor            BigInt   @default(0)
+  currency              String   @default("SEK")
+  expectedOutcome       String
+  actualOutcome         String?
+  roiBasisPoints        Int?
+  lessons               String[]
+  budgetApprovedBy      String?
+  budgetApprovedAt      DateTime?
+  publicationApprovedBy String?
+  publicationApprovedAt DateTime?
+  publishedAt           DateTime?
+  createdBy             String
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([companyId, status])
+  @@index([productId, status])
+}
+
+model SalesOpportunity {
+  id                  String   @id @default(uuid())
+  companyId           String
+  company             Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  accountName         String
+  stage               String   @default("LEAD")
+  offer               String
+  pricingModel        String
+  valueMinor          BigInt
+  currency            String   @default("SEK")
+  probability         Int      @default(0)
+  forecastCloseAt     DateTime?
+  partnership         Boolean  @default(false)
+  upsell              String?
+  crossSell           String?
+  riskLevel           String   @default("medium")
+  approvalRequired    Boolean  @default(true)
+  approvedBy          String?
+  approvedAt          DateTime?
+  outcome             String?
+  owner               String
+  createdBy           String
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([companyId, stage])
+  @@index([forecastCloseAt])
+}
+
+model CustomerAccount {
+  id                 String   @id @default(uuid())
+  companyId          String
+  company            Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  accountName        String
+  externalReference String?  @unique
+  status             String   @default("ONBOARDING")
+  dataClassification String   @default("CONFIDENTIAL")
+  healthScore        Int?
+  churnRisk          String   @default("UNKNOWN")
+  retentionPlan      String?
+  owner              String
+  createdBy          String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  cases              CustomerCase[]
+  feedback           BusinessFeedback[]
+
+  @@index([companyId, status])
+  @@index([companyId, churnRisk])
+}
+
+model CustomerCase {
+  id          String          @id @default(uuid())
+  companyId   String
+  company     Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  accountId   String
+  account     CustomerAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  caseType    String
+  severity    String
+  status      String          @default("OPEN")
+  summary     String
+  resolution  String?
+  escalatedAt DateTime?
+  owner       String
+  createdBy   String
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([companyId, status])
+  @@index([accountId, status])
+}
+
+model BusinessFeedback {
+  id             String           @id @default(uuid())
+  companyId      String
+  company        Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  accountId      String?
+  account        CustomerAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  productId      String?
+  product        Product?         @relation(fields: [productId], references: [id], onDelete: SetNull)
+  source         String
+  category       String
+  summary        String
+  evidence       String[]
+  routes         String[]
+  status         String           @default("NEW")
+  idempotencyKey String           @unique
+  createdBy      String
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([companyId, status])
+  @@index([productId, status])
+  @@index([accountId, status])
 }
