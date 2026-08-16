@@ -414,6 +414,12 @@ model Company {
   incidents          OperationalIncident[]
   complianceIssues   ComplianceIssue[]
   services           ServiceRecord[]
+  standards          StandardRegistry[]
+  controlEvidence    ControlEvidence[]
+  outcomeReviews     OutcomeReview[]
+  lessonsLearned     LessonLearned[]
+  improvementProposals ImprovementProposal[]
+  agentRecommendations AgentRecommendation[]
 
   @@index([status])
 }
@@ -1363,4 +1369,129 @@ model ServiceEvent {
   createdAt   DateTime      @default(now())
 
   @@index([serviceId, eventType, occurredAt])
+}
+
+model StandardRegistry {
+  id                    String   @id @default(uuid())
+  companyId             String
+  company               Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  framework             String
+  edition               String
+  editionVerifiedAt     DateTime?
+  scope                 String
+  departments           String[]
+  controls              Json
+  process               String
+  owner                 String
+  testFrequencyDays     Int
+  exceptions            String[]
+  correctiveActions     String[]
+  nextReviewAt          DateTime
+  status                String   @default("DRAFT")
+  createdBy             String
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  evidence              ControlEvidence[]
+
+  @@unique([companyId, framework, edition])
+  @@index([companyId, status, nextReviewAt])
+}
+
+model ControlEvidence {
+  id               String           @id @default(uuid())
+  companyId        String
+  company          Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  standardId       String
+  standard         StandardRegistry @relation(fields: [standardId], references: [id], onDelete: Cascade)
+  controlKey       String
+  owner            String
+  process          String
+  evidenceRefs     String[]
+  testMethod       String
+  result           String
+  exception        String?
+  correctiveAction String?
+  testedAt         DateTime
+  expiresAt        DateTime
+  reviewAt         DateTime
+  createdBy        String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([standardId, controlKey, testedAt])
+  @@index([companyId, result, expiresAt])
+}
+
+model OutcomeReview {
+  id               String   @id @default(uuid())
+  companyId        String
+  company          Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projectId        String
+  expected         Json
+  actual           Json
+  dimensions       String[]
+  evidenceRefs     String[]
+  reviewedBy       String
+  reviewedAt       DateTime @default(now())
+  createdAt        DateTime @default(now())
+  lessons          LessonLearned[]
+
+  @@index([companyId, projectId, reviewedAt])
+}
+
+model LessonLearned {
+  id             String        @id @default(uuid())
+  companyId      String
+  company        Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  outcomeReviewId String
+  outcomeReview  OutcomeReview @relation(fields: [outcomeReviewId], references: [id], onDelete: Cascade)
+  summary        String
+  provenance     String
+  evidenceRefs   String[]
+  confidence     Float
+  createdBy      String
+  createdAt      DateTime      @default(now())
+  proposals      ImprovementProposal[]
+
+  @@index([companyId, createdAt])
+}
+
+model ImprovementProposal {
+  id             String         @id @default(uuid())
+  companyId      String
+  company        Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  lessonId       String
+  lesson         LessonLearned  @relation(fields: [lessonId], references: [id], onDelete: Restrict)
+  targetType     String
+  targetId       String?
+  proposedChange String
+  rationale      String
+  status         String         @default("PENDING_APPROVAL")
+  requestedBy    String
+  requestedAt    DateTime       @default(now())
+  decidedBy      String?
+  decidedAt      DateTime?
+  decisionNotes  String?
+
+  @@index([companyId, status, targetType])
+}
+
+model AgentRecommendation {
+  id             String   @id @default(uuid())
+  companyId      String
+  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  agentId        String
+  action         String
+  metrics        Json
+  evidenceRefs   String[]
+  rationale      String
+  status         String   @default("PENDING_APPROVAL")
+  expiresAt      DateTime?
+  requestedBy    String
+  requestedAt    DateTime @default(now())
+  decidedBy      String?
+  decidedAt      DateTime?
+
+  @@index([companyId, agentId, status])
+  @@index([expiresAt, status])
 }
