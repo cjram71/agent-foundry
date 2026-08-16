@@ -11,6 +11,7 @@ const sections = [
       ["/approvals", "My decisions"],
       ["/opportunities", "Opportunities"],
       ["/projects", "Workspaces"],
+      ["/project-governance", "Project governance"],
       ["/editorial", "Content pipeline"],
     ],
   ],

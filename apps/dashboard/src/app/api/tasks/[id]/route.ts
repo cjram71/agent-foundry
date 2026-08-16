@@ -74,6 +74,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   if (body.action === 'request_plan') {
     if (current.status !== 'draft' && current.status !== 'failed') return NextResponse.json({ error: `Task is already ${current.status.replaceAll('_', ' ')}.` }, { status: 409 });
+    if (!['APPROVED','LEGACY_APPROVED'].includes(current.project.governanceStatus)) return NextResponse.json({ error: 'Execution is locked until the Master Project Plan is approved.' }, { status: 409 });
     const planSpend = await checkSpendGuard(current.projectId);
     if (!planSpend.allowed) {
       await prisma.auditEvent.create({ data: { actor: auth.session!.userId, action: 'cost.spend_blocked', target: id, result: 'rejected', metadata: { stage: 'request_plan', spendUsd: planSpend.spendUsd, limitUsd: planSpend.limitUsd } } });
@@ -118,6 +119,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (body.action === 'approve_plan' || body.action === 'reject_plan') {
     if (current.status !== 'awaiting_plan_approval') return NextResponse.json({ error: `Task is already ${current.status.replaceAll('_', ' ')}.` }, { status: 409 });
     const approved = body.action === 'approve_plan';
+    if (approved && !['APPROVED','LEGACY_APPROVED'].includes(current.project.governanceStatus)) return NextResponse.json({ error: 'Execution is locked until the Master Project Plan is approved.' }, { status: 409 });
     const evaluationOnly = current.title.startsWith('AI Project Manager Evaluation');
     const assignedProjectAgent = approved ? await projectAgentFor(current) : null;
     if (approved) {

@@ -142,30 +142,61 @@ model Session {
 }
 
 model Project {
-  id               String          @id @default(uuid())
-  companyId        String?
-  company          Company?        @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  name             String
-  githubOwner      String
-  githubRepo       String
-  defaultBranch    String          @default("main")
-  projectType      String          @default("web_app")
-  productionUrl    String?
-  vercelProjectRef String?
-  vercelTeamRef    String?
-  authorisedStatus Boolean         @default(false)
-  spendingLimit    Float           @default(50.00)
-  createdAt        DateTime        @default(now())
-  tasks            Task[]
-  policies         ProjectPolicy[]
-  memories         MemoryRecord[]
-  revenueStreams   RevenueStream[]
-  economicEvents   EconomicEvent[]
-  runs             ProjectRun[]
-  missions         Mission[]
-  projectAgents    ProjectAgent[]
+  id                  String          @id @default(uuid())
+  companyId           String?
+  company             Company?        @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  name                String
+  githubOwner         String
+  githubRepo          String
+  defaultBranch       String          @default("main")
+  projectType         String          @default("web_app")
+  productionUrl       String?
+  vercelProjectRef    String?
+  vercelTeamRef       String?
+  authorisedStatus    Boolean         @default(false)
+  spendingLimit       Float           @default(50.00)
+  createdAt           DateTime        @default(now())
+  sourceOpportunityId String?         @unique
+  sourceOpportunity   Opportunity?    @relation(fields: [sourceOpportunityId], references: [id], onDelete: Restrict)
+  governanceStatus    String          @default("LEGACY_APPROVED")
+  pausedReason        String?
+  planVersion         Int             @default(0)
+  approvedPlanVersion Int?
+  planApprovedAt      DateTime?
+  planApprovedBy      String?
+  tasks               Task[]
+  policies            ProjectPolicy[]
+  memories            MemoryRecord[]
+  revenueStreams      RevenueStream[]
+  economicEvents      EconomicEvent[]
+  runs                ProjectRun[]
+  missions            Mission[]
+  projectAgents       ProjectAgent[]
+  plans               ProjectPlan[]
 
   @@index([companyId, createdAt])
+  @@index([companyId, governanceStatus])
+}
+
+model ProjectPlan {
+  id             String    @id @default(uuid())
+  projectId      String
+  project        Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  version        Int
+  status         String    @default("DRAFT")
+  content        Json
+  contentHash    String
+  materialChange Boolean   @default(false)
+  changeSummary  String?
+  createdBy      String
+  createdAt      DateTime  @default(now())
+  approvedBy     String?
+  approvedAt     DateTime?
+  supersedesId   String?
+
+  @@unique([projectId, version])
+  @@unique([projectId, contentHash])
+  @@index([projectId, status])
 }
 
 model ProjectRun {
@@ -261,8 +292,9 @@ model Mission {
   approvals            MissionApproval[]
   events               MissionEvent[]
 
-  editorialJob         EditorialJob?
-  opportunities        Opportunity[]
+  editorialJob  EditorialJob?
+  opportunities Opportunity[]
+
   @@index([projectId, status])
   @@index([companyId, status])
   @@index([businessId, status])
@@ -298,8 +330,11 @@ model Opportunity {
   updatedAt             DateTime              @updatedAt
   redTeam               OpportunityRedTeam?
   decisions             OpportunityDecision[]
+  project               Project?
+
   @@index([companyId, status, createdAt])
 }
+
 model OpportunityRedTeam {
   id                    String      @id @default(uuid())
   opportunityId         String      @unique
@@ -316,21 +351,24 @@ model OpportunityRedTeam {
   createdAt             DateTime    @default(now())
   updatedAt             DateTime    @updatedAt
 }
+
 model OpportunityDecision {
-  id            String      @id @default(uuid())
-  opportunityId String
-  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
-  decision      String
-  rationale     String
-  options       String[]
-  assumptions   String[]
+  id             String      @id @default(uuid())
+  opportunityId  String
+  opportunity    Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  decision       String
+  rationale      String
+  options        String[]
+  assumptions    String[]
   expectedResult String?
-  actualResult  String?
-  lesson        String?
-  decidedBy     String
-  decidedAt     DateTime    @default(now())
+  actualResult   String?
+  lesson         String?
+  decidedBy      String
+  decidedAt      DateTime    @default(now())
+
   @@index([opportunityId, decidedAt])
 }
+
 model Company {
   id                 String                @id
   legalName          String
@@ -387,37 +425,38 @@ model CompanyDepartment {
 }
 
 model CompanyAgent {
-  id                    String            @id
-  companyId             String
-  company               Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  departmentId          String
-  department            CompanyDepartment @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  managerId             String?
-  manager               CompanyAgent?     @relation("CompanyAgentManagement", fields: [managerId], references: [id], onDelete: Restrict)
-  subordinates          CompanyAgent[]    @relation("CompanyAgentManagement")
-  name                  String
-  role                  String
-  purpose               String
-  responsibilities      String[]
-  capabilities          Json
-  permissions           Json
-  tools                 String[]
-  dataAccess            Json
-  financialLimitMinor   BigInt            @default(0)
-  externalActionLimit   Json
-  riskLevel             String
-  model                 String
-  version               String            @default("1.0.0")
-  status                String            @default("STAGING")
-  expiresAt             DateTime?
-  createdBy             String
-  createdAt             DateTime          @default(now())
-  updatedAt             DateTime          @updatedAt
+  id                  String            @id
+  companyId           String
+  company             Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  departmentId        String
+  department          CompanyDepartment @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  managerId           String?
+  manager             CompanyAgent?     @relation("CompanyAgentManagement", fields: [managerId], references: [id], onDelete: Restrict)
+  subordinates        CompanyAgent[]    @relation("CompanyAgentManagement")
+  name                String
+  role                String
+  purpose             String
+  responsibilities    String[]
+  capabilities        Json
+  permissions         Json
+  tools               String[]
+  dataAccess          Json
+  financialLimitMinor BigInt            @default(0)
+  externalActionLimit Json
+  riskLevel           String
+  model               String
+  version             String            @default("1.0.0")
+  status              String            @default("STAGING")
+  expiresAt           DateTime?
+  createdBy           String
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
 
   @@index([companyId, status])
   @@index([departmentId, status])
   @@index([managerId])
 }
+
 enum EditorialStatus {
   INBOX
   DRAFTING
@@ -439,24 +478,24 @@ model EditorialJob {
   mission             Mission?        @relation(fields: [missionId], references: [id], onDelete: SetNull)
   title               String
   status              EditorialStatus @default(INBOX)
-  sourcePath          String           @unique
+  sourcePath          String          @unique
   draftPath           String?
   approvedPath        String?
   publicationPath     String?
-  sourceLanguage      String           @default("sv")
-  targetLanguages     String[]         @default(["sv", "en"])
-  destinations        String[]         @default(["website"])
+  sourceLanguage      String          @default("sv")
+  targetLanguages     String[]        @default(["sv", "en"])
+  destinations        String[]        @default(["website"])
   instructions        String?
-  attempts            Int              @default(0)
+  attempts            Int             @default(0)
   errorMessage        String?
   approvalRequestedAt DateTime?
   approvedAt          DateTime?
   approvedBy          String?
   publishedAt         DateTime?
-  createdAt           DateTime         @default(now())
+  createdAt           DateTime        @default(now())
   verifiedAt          DateTime?
   verification        Json?
-  updatedAt           DateTime         @updatedAt
+  updatedAt           DateTime        @updatedAt
 
   @@index([companyId, status, createdAt])
   @@index([status, updatedAt])
@@ -592,7 +631,15 @@ model Task {
   status              TaskStatus            @default(draft)
   state               TaskState             @default(DRAFT)
   riskLevel           String                @default("medium")
-  assignedAgent       String?
+  assignedAgent       String                @default("human-owner")
+  department          String                @default("operations")
+  requiredInputs      String[]
+  dependencyTaskIds   String[]
+  validationCriteria  String[]
+  approvalRequired    Boolean               @default(true)
+  resultSummary       String?
+  dueAt               DateTime?
+  blockedReason       String?
   branchName          String?
   pullRequestUrl      String?
   previewUrl          String?
