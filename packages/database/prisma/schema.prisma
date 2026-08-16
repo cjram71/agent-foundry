@@ -408,6 +408,12 @@ model Company {
   customerAccounts   CustomerAccount[]
   customerCases      CustomerCase[]
   businessFeedback   BusinessFeedback[]
+  financeEntries     FinanceLedgerEntry[]
+  cfoReports         CfoReport[]
+  securityFindings   SecurityFinding[]
+  incidents          OperationalIncident[]
+  complianceIssues   ComplianceIssue[]
+  services           ServiceRecord[]
 
   @@index([status])
 }
@@ -1197,4 +1203,164 @@ model BusinessFeedback {
   @@index([companyId, status])
   @@index([productId, status])
   @@index([accountId, status])
+}
+
+model FinanceLedgerEntry {
+  id                    String   @id @default(uuid())
+  companyId             String
+  company               Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  entryType             String
+  amountMinor           BigInt
+  currency              String   @default("SEK")
+  category              String
+  department            String?
+  agentId               String?
+  model                 String?
+  taskId                String?
+  projectId             String?
+  customerId            String?
+  productId             String?
+  providerInvoiceRef    String?
+  providerUsageRef      String?
+  reconciliationStatus  String   @default("UNRECONCILED")
+  evidence              Json?
+  idempotencyKey        String   @unique
+  occurredAt            DateTime
+  recordedBy            String
+  createdAt             DateTime @default(now())
+
+  @@index([companyId, occurredAt])
+  @@index([projectId, occurredAt])
+  @@index([agentId, model, occurredAt])
+  @@index([reconciliationStatus, occurredAt])
+}
+
+model CfoReport {
+  id           String   @id @default(uuid())
+  companyId    String
+  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  period       String
+  periodStart  DateTime
+  periodEnd    DateTime
+  metrics      Json
+  forecast     Json
+  risks        String[]
+  generatedBy  String
+  approvedBy   String?
+  approvedAt   DateTime?
+  createdAt    DateTime @default(now())
+
+  @@unique([companyId, period, periodStart, periodEnd])
+  @@index([companyId, periodEnd])
+}
+
+model SecurityFinding {
+  id           String   @id @default(uuid())
+  companyId    String
+  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  domain       String
+  severity     String
+  status       String   @default("OPEN")
+  title        String
+  description  String
+  evidence     String[]
+  owner        String
+  dueAt        DateTime?
+  resolvedAt   DateTime?
+  createdBy    String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([companyId, severity, status])
+}
+
+model OperationalIncident {
+  id              String   @id @default(uuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  severity        String
+  status          String   @default("DETECTED")
+  title           String
+  detectedAt      DateTime @default(now())
+  containedAt     DateTime?
+  investigatedAt  DateTime?
+  recoveredAt     DateTime?
+  validatedAt     DateTime?
+  reportedAt      DateTime?
+  escalationAt    DateTime?
+  rootCause       String?
+  correctiveAction String?
+  lessons         String[]
+  evidence        String[]
+  owner           String
+  createdBy       String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([companyId, severity, status])
+}
+
+model ComplianceIssue {
+  id                     String   @id @default(uuid())
+  companyId              String
+  company                Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  framework              String
+  obligation             String
+  readinessStatus        String   @default("NOT_ASSESSED")
+  legalInformation       String
+  professionalAdviceNeeded Boolean @default(false)
+  professionalEscalation String?
+  owner                  String
+  evidence               String[]
+  dueAt                  DateTime?
+  createdBy              String
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@index([companyId, framework, readinessStatus])
+}
+
+model ServiceRecord {
+  id                 String   @id @default(uuid())
+  companyId          String
+  company            Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name               String
+  owner              String
+  customers          String[]
+  dataClassification String
+  dependencies       String[]
+  suppliers          String[]
+  sla                Json
+  recovery           Json
+  availabilityTarget Float?
+  capacity           Json?
+  monitoring         Json
+  continuityPlan     String
+  lastReviewAt       DateTime?
+  nextReviewAt       DateTime
+  status             String   @default("ACTIVE")
+  createdBy          String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  events             ServiceEvent[]
+
+  @@unique([companyId, name])
+  @@index([companyId, status, nextReviewAt])
+}
+
+model ServiceEvent {
+  id          String        @id @default(uuid())
+  serviceId   String
+  service     ServiceRecord @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  eventType   String
+  status      String
+  summary     String
+  evidence    String[]
+  approvedBy  String?
+  approvedAt  DateTime?
+  occurredAt  DateTime      @default(now())
+  createdBy   String
+  createdAt   DateTime      @default(now())
+
+  @@index([serviceId, eventType, occurredAt])
 }

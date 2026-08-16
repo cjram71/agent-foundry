@@ -1,0 +1,4 @@
+import assert from'node:assert/strict';import test from'node:test';import{critical,incidentFlow,legalLabel,nextIncidentState,securityDomains}from'../service-operations.ts';
+test('critical incidents escalate and flow cannot skip steps',()=>{assert(critical('CRITICAL'));assert(nextIncidentState('DETECTED','CLASSIFIED'));assert.equal(nextIncidentState('DETECTED','RECOVERED'),false);assert.equal(incidentFlow.length,10)});
+test('compliance language never claims certification',()=>{assert.match(legalLabel('PARTIAL'),/readiness/);assert.match(legalLabel('PARTIAL'),/not certification/)});
+test('CISO domains cover identity through supply chain',()=>{for(const d of['IDENTITY','VULNERABILITY','THREAT_INTELLIGENCE','MONITORING','APPLICATION','CLOUD','DATA','AI','SUPPLY_CHAIN','AUDIT'])assert(securityDomains.has(d))});

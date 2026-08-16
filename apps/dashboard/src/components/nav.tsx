@@ -13,6 +13,7 @@ const sections = [
       ["/projects", "Workspaces"],
       ["/project-governance", "Project governance"],
       ["/business-delivery", "Business delivery"],
+      ["/operations", "Finance & operations"],
       ["/editorial", "Content pipeline"],
     ],
   ],
