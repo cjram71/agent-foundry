@@ -41,6 +41,14 @@ export interface AutonomyResult {
   decision: AutonomyDecision;
   reason: string;
 }
+export type AutonomyAction = 'internal-analysis' | 'draft-pr' | 'spending' | 'deployment' | 'communication' | 'contracting' | 'publishing' | 'agent-creation';
+export interface ActionAuthorityResult { allowed: boolean; reason: string; requiresHuman: boolean }
+export function evaluateActionAuthority(policy: AutonomyPolicyValues, action: AutonomyAction, context: Pick<AutonomyContext, 'projectAuthorized' | 'emergencyStop'>): ActionAuthorityResult {
+  if (!context.projectAuthorized || !policy.autonomousMode) return { allowed: false, reason: 'autonomy is not enabled for this project', requiresHuman: true };
+  if (context.emergencyStop) return { allowed: false, reason: 'emergency stop is engaged', requiresHuman: true };
+  if (action !== 'internal-analysis' && action !== 'draft-pr') return { allowed: false, reason: `${action} requires explicit human authority`, requiresHuman: true };
+  return { allowed: true, reason: 'bounded low-risk action is permitted by policy', requiresHuman: false };
+}
 
 export function evaluateAutonomy(policy: AutonomyPolicyValues, context: AutonomyContext): AutonomyResult {
   if (!context.projectAuthorized || !policy.autonomousMode) return { decision: 'REQUIRE_HUMAN', reason: 'project autonomy is not enabled' };
