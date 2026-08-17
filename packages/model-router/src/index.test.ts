@@ -1,4 +1,4 @@
-import assert from 'node:assert/strict'; import test from 'node:test'; import { routeModel, utcDayStart, type RouteInput } from './index';
+import assert from 'node:assert/strict'; import test from 'node:test'; import { routeModel, selectProvider, utcDayStart, type RouteInput } from './index';
 function input(overrides: Partial<RouteInput> = {}): RouteInput { return { role:'planner',risk:'medium',privacySensitive:false,complexity:'complex',estimatedTokens:1000,cloudRatePerMillionUsd:2,cloudAvailable:true,localAvailable:true,cloudModel:'cloud:test',localModel:'local:test',budget:{tokenLimit:10000,dailyTokenLimit:50000,maximumTaskCostUsd:1,maximumDailyCostUsd:5},usage:{taskTokens:0,dailyTokens:0,taskCloudCostUsd:0,dailyCloudCostUsd:0},...overrides }; }
 test('complex work uses configured cloud budget',()=>assert.equal(routeModel(input()).provider,'cloud'));
 test('missing price fails closed to local',()=>{const v=routeModel(input({cloudRatePerMillionUsd:0}));assert.equal(v.provider,'local');assert.match(v.reason,/not configured/)});
@@ -8,3 +8,5 @@ test('exhausted cost falls back local',()=>assert.equal(routeModel(input({usage:
 test('no affordable provider blocks',()=>assert.equal(routeModel(input({cloudRatePerMillionUsd:0,localAvailable:false})).allowed,false));
 test('prohibited never routes',()=>assert.equal(routeModel(input({risk:'prohibited'})).allowed,false));
 test('UTC day is deterministic',()=>assert.equal(utcDayStart(new Date('2026-08-10T23:59:00-05:00')).toISOString(),'2026-08-11T00:00:00.000Z'));
+test('provider selection requires declared capabilities and prefers lower latency',()=>{const selected=selectProvider([{provider:'cloud',model:'cloud:research',capabilities:['research'],available:true,estimatedLatencyMs:10},{provider:'local',model:'local:research',capabilities:['research','private-data'],available:true,estimatedLatencyMs:20}],['research'],false);assert.equal(selected?.model,'cloud:research')});
+test('privacy-sensitive selection fails closed without private-data capability',()=>assert.equal(selectProvider([{provider:'cloud',model:'cloud:research',capabilities:['research'],available:true}],['research'],true),undefined));
