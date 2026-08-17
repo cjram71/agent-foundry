@@ -47,3 +47,4 @@ export class ToolGateway {
   private event(context:ToolInvocationContext,contract:Pick<ToolContract,'id'|'action'|'requiredPermission'|'risk'>,result:ToolAudit['result']):ToolAudit{return{actor:context.actor,toolId:contract.id,action:contract.action,result,purpose:context.purpose,requiredPermission:contract.requiredPermission,risk:contract.risk,timestamp:this.now(),missionId:context.missionId,taskId:context.taskId,correlationId:context.correlationId};}
   private async deny(toolId:string,reason:string,context:ToolInvocationContext,action='unknown'):Promise<never>{await this.auditSink({actor:context.actor,toolId,action,result:'denied',purpose:context.purpose,timestamp:this.now(),reason,missionId:context.missionId,taskId:context.taskId,correlationId:context.correlationId});throw new Error(`Tool denied: ${reason}`);}
 }
+export { McpClient, registerMcpTool } from './mcp';
