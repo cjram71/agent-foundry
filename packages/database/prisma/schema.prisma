@@ -420,6 +420,11 @@ model Company {
   lessonsLearned     LessonLearned[]
   improvementProposals ImprovementProposal[]
   agentRecommendations AgentRecommendation[]
+  worldEntities         WorldEntity[]
+  worldRelations        WorldRelation[]
+  twinScenarios         TwinScenario[]
+  healthSnapshots       HealthSnapshot[]
+  attentionItems        AttentionItem[]
 
   @@index([status])
 }
@@ -1494,4 +1499,141 @@ model AgentRecommendation {
 
   @@index([companyId, agentId, status])
   @@index([expiresAt, status])
+}
+
+model WorldEntity {
+  id                 String   @id @default(uuid())
+  companyId          String
+  company            Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  entityType         String
+  name               String
+  canonicalKey       String
+  attributes         Json
+  sourceReference    String
+  sourceAuthority    String
+  validationStatus   String   @default("PROPOSED")
+  confidence         Float    @default(0)
+  classification     String   @default("INTERNAL")
+  validFrom          DateTime?
+  validUntil         DateTime?
+  createdBy          String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  outgoing           WorldRelation[] @relation("WorldRelationFrom")
+  incoming           WorldRelation[] @relation("WorldRelationTo")
+  scenarioChanges    TwinScenarioChange[]
+
+  @@unique([companyId, canonicalKey])
+  @@index([companyId, entityType, validationStatus])
+  @@index([companyId, classification])
+}
+
+model WorldRelation {
+  id               String      @id @default(uuid())
+  companyId        String
+  company          Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  fromEntityId     String
+  fromEntity       WorldEntity @relation("WorldRelationFrom", fields: [fromEntityId], references: [id], onDelete: Restrict)
+  toEntityId       String
+  toEntity         WorldEntity @relation("WorldRelationTo", fields: [toEntityId], references: [id], onDelete: Restrict)
+  relationType     String
+  attributes       Json
+  sourceReference  String
+  confidence       Float       @default(0)
+  validationStatus String      @default("PROPOSED")
+  createdBy        String
+  createdAt        DateTime    @default(now())
+
+  @@unique([companyId, fromEntityId, toEntityId, relationType])
+  @@index([companyId, relationType])
+}
+
+model TwinScenario {
+  id             String               @id @default(uuid())
+  companyId      String
+  company        Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name           String
+  description    String
+  status         String               @default("DRAFT")
+  baselineAt     DateTime?
+  horizonDays    Int                  @default(90)
+  assumptions    Json
+  createdBy      String
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  changes        TwinScenarioChange[]
+  result         TwinScenarioResult?
+
+  @@index([companyId, status, createdAt])
+}
+
+model TwinScenarioChange {
+  id              String        @id @default(uuid())
+  scenarioId      String
+  scenario        TwinScenario  @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  entityId        String?
+  entity          WorldEntity?  @relation(fields: [entityId], references: [id], onDelete: SetNull)
+  entityType      String
+  action          String
+  patch           Json
+  rationale       String
+  sourceReference String
+  createdBy       String
+  createdAt       DateTime      @default(now())
+
+  @@index([scenarioId, createdAt])
+  @@index([entityId])
+}
+
+model TwinScenarioResult {
+  id               String       @id @default(uuid())
+  scenarioId       String       @unique
+  scenario         TwinScenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  dimensions       Json
+  assumptions      Json
+  uncertainty      Json
+  confidence       Float
+  missingData      String[]
+  executionBlocked Boolean      @default(true)
+  recordedBy       String
+  recordedAt       DateTime     @default(now())
+
+  @@index([recordedAt])
+}
+
+model HealthSnapshot {
+  id                 String   @id @default(uuid())
+  companyId          String
+  company            Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  asOf               DateTime
+  overallScore       Float?
+  dimensions         Json
+  missingData        String[]
+  evidenceRefs       String[]
+  calculationVersion String
+  createdBy          String
+  createdAt          DateTime @default(now())
+
+  @@index([companyId, asOf])
+}
+
+model AttentionItem {
+  id                     String   @id @default(uuid())
+  companyId              String
+  company                Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  title                  String
+  category               String
+  valueScore             Float
+  urgencyScore           Float
+  impactScore            Float
+  estimatedReviewMinutes Int
+  priorityScore          Float
+  status                 String   @default("OPEN")
+  sourceRefs             String[]
+  dueAt                  DateTime?
+  createdBy              String
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@index([companyId, status, priorityScore])
 }
