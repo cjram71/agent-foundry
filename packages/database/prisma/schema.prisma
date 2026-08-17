@@ -142,30 +142,62 @@ model Session {
 }
 
 model Project {
-  id               String          @id @default(uuid())
-  companyId        String?
-  company          Company?        @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  name             String
-  githubOwner      String
-  githubRepo       String
-  defaultBranch    String          @default("main")
-  projectType      String          @default("web_app")
-  productionUrl    String?
-  vercelProjectRef String?
-  vercelTeamRef    String?
-  authorisedStatus Boolean         @default(false)
-  spendingLimit    Float           @default(50.00)
-  createdAt        DateTime        @default(now())
-  tasks            Task[]
-  policies         ProjectPolicy[]
-  memories         MemoryRecord[]
-  revenueStreams   RevenueStream[]
-  economicEvents   EconomicEvent[]
-  runs             ProjectRun[]
-  missions         Mission[]
-  projectAgents    ProjectAgent[]
+  id                  String          @id @default(uuid())
+  companyId           String?
+  company             Company?        @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  name                String
+  githubOwner         String
+  githubRepo          String
+  defaultBranch       String          @default("main")
+  projectType         String          @default("web_app")
+  productionUrl       String?
+  vercelProjectRef    String?
+  vercelTeamRef       String?
+  authorisedStatus    Boolean         @default(false)
+  spendingLimit       Float           @default(50.00)
+  createdAt           DateTime        @default(now())
+  sourceOpportunityId String?         @unique
+  sourceOpportunity   Opportunity?    @relation(fields: [sourceOpportunityId], references: [id], onDelete: Restrict)
+  governanceStatus    String          @default("LEGACY_APPROVED")
+  pausedReason        String?
+  planVersion         Int             @default(0)
+  approvedPlanVersion Int?
+  planApprovedAt      DateTime?
+  planApprovedBy      String?
+  tasks               Task[]
+  policies            ProjectPolicy[]
+  memories            MemoryRecord[]
+  revenueStreams      RevenueStream[]
+  economicEvents      EconomicEvent[]
+  runs                ProjectRun[]
+  missions            Mission[]
+  projectAgents       ProjectAgent[]
+  plans               ProjectPlan[]
+  products            Product[]
 
   @@index([companyId, createdAt])
+  @@index([companyId, governanceStatus])
+}
+
+model ProjectPlan {
+  id             String    @id @default(uuid())
+  projectId      String
+  project        Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  version        Int
+  status         String    @default("DRAFT")
+  content        Json
+  contentHash    String
+  materialChange Boolean   @default(false)
+  changeSummary  String?
+  createdBy      String
+  createdAt      DateTime  @default(now())
+  approvedBy     String?
+  approvedAt     DateTime?
+  supersedesId   String?
+
+  @@unique([projectId, version])
+  @@unique([projectId, contentHash])
+  @@index([projectId, status])
 }
 
 model ProjectRun {
@@ -261,6 +293,9 @@ model Mission {
   approvals            MissionApproval[]
   events               MissionEvent[]
 
+  editorialJob  EditorialJob?
+  opportunities Opportunity[]
+
   @@index([projectId, status])
   @@index([companyId, status])
   @@index([businessId, status])
@@ -268,6 +303,71 @@ model Mission {
   @@index([charterId, charterVersion])
   @@index([missionTemplateId])
   @@index([revenueStreamId, economicStatus])
+}
+
+model Opportunity {
+  id                    String                @id @default(uuid())
+  companyId             String
+  company               Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  missionId             String?
+  mission               Mission?              @relation(fields: [missionId], references: [id], onDelete: SetNull)
+  title                 String
+  description           String
+  source                String
+  customer              String
+  market                String
+  problem               String
+  proposedSolution      String
+  evidence              String[]
+  scores                Json
+  totalScore            Int
+  confidence            Int
+  evidenceQuality       String
+  unknowns              String[]
+  recommendedExperiment String
+  status                String                @default("CANDIDATE")
+  createdBy             String
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  redTeam               OpportunityRedTeam?
+  decisions             OpportunityDecision[]
+  project               Project?
+
+  @@index([companyId, status, createdAt])
+}
+
+model OpportunityRedTeam {
+  id                    String      @id @default(uuid())
+  opportunityId         String      @unique
+  opportunity           Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  reviewerAgentId       String
+  failureModes          String[]
+  challengedAssumptions String[]
+  evidence              String[]
+  cheapestDisproof      String
+  securityRisks         String[]
+  legalRisks            String[]
+  economicRisks         String[]
+  createdBy             String
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+}
+
+model OpportunityDecision {
+  id             String      @id @default(uuid())
+  opportunityId  String
+  opportunity    Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  decision       String
+  rationale      String
+  options        String[]
+  assumptions    String[]
+  expectedResult String?
+  actualResult   String?
+  lesson         String?
+  decidedBy      String
+  decidedAt      DateTime    @default(now())
+
+  @@index([opportunityId, decidedAt])
 }
 
 model Company {
@@ -299,8 +399,86 @@ model Company {
   projects           Project[]
   missions           Mission[]
   editorialJobs      EditorialJob[]
+  departments        CompanyDepartment[]
+  companyAgents      CompanyAgent[]
+  opportunities      Opportunity[]
+  products           Product[]
+  marketingCampaigns MarketingCampaign[]
+  salesOpportunities SalesOpportunity[]
+  customerAccounts   CustomerAccount[]
+  customerCases      CustomerCase[]
+  businessFeedback   BusinessFeedback[]
+  financeEntries     FinanceLedgerEntry[]
+  cfoReports         CfoReport[]
+  securityFindings   SecurityFinding[]
+  incidents          OperationalIncident[]
+  complianceIssues   ComplianceIssue[]
+  services           ServiceRecord[]
+  standards          StandardRegistry[]
+  controlEvidence    ControlEvidence[]
+  outcomeReviews     OutcomeReview[]
+  lessonsLearned     LessonLearned[]
+  improvementProposals ImprovementProposal[]
+  agentRecommendations AgentRecommendation[]
+  worldEntities         WorldEntity[]
+  worldRelations        WorldRelation[]
+  twinScenarios         TwinScenario[]
+  healthSnapshots       HealthSnapshot[]
+  attentionItems        AttentionItem[]
 
   @@index([status])
+}
+
+model CompanyDepartment {
+  id               String         @id
+  companyId        String
+  company          Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  code             String
+  name             String
+  purpose          String
+  executiveRole    String
+  status           String         @default("ACTIVE")
+  authorityLevel   String         @default("ADVISORY")
+  budgetLimitMinor BigInt         @default(0)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  agents           CompanyAgent[]
+
+  @@unique([companyId, code])
+  @@index([companyId, status])
+}
+
+model CompanyAgent {
+  id                  String            @id
+  companyId           String
+  company             Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  departmentId        String
+  department          CompanyDepartment @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  managerId           String?
+  manager             CompanyAgent?     @relation("CompanyAgentManagement", fields: [managerId], references: [id], onDelete: Restrict)
+  subordinates        CompanyAgent[]    @relation("CompanyAgentManagement")
+  name                String
+  role                String
+  purpose             String
+  responsibilities    String[]
+  capabilities        Json
+  permissions         Json
+  tools               String[]
+  dataAccess          Json
+  financialLimitMinor BigInt            @default(0)
+  externalActionLimit Json
+  riskLevel           String
+  model               String
+  version             String            @default("1.0.0")
+  status              String            @default("STAGING")
+  expiresAt           DateTime?
+  createdBy           String
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  @@index([companyId, status])
+  @@index([departmentId, status])
+  @@index([managerId])
 }
 
 enum EditorialStatus {
@@ -320,24 +498,28 @@ model EditorialJob {
   id                  String          @id @default(uuid())
   companyId           String
   company             Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  missionId           String?         @unique
+  mission             Mission?        @relation(fields: [missionId], references: [id], onDelete: SetNull)
   title               String
   status              EditorialStatus @default(INBOX)
-  sourcePath          String           @unique
+  sourcePath          String          @unique
   draftPath           String?
   approvedPath        String?
   publicationPath     String?
-  sourceLanguage      String           @default("sv")
-  targetLanguages     String[]         @default(["sv", "en"])
-  destinations        String[]         @default(["website"])
+  sourceLanguage      String          @default("sv")
+  targetLanguages     String[]        @default(["sv", "en"])
+  destinations        String[]        @default(["website"])
   instructions        String?
-  attempts            Int              @default(0)
+  attempts            Int             @default(0)
   errorMessage        String?
   approvalRequestedAt DateTime?
   approvedAt          DateTime?
   approvedBy          String?
   publishedAt         DateTime?
-  createdAt           DateTime         @default(now())
-  updatedAt           DateTime         @updatedAt
+  createdAt           DateTime        @default(now())
+  verifiedAt          DateTime?
+  verification        Json?
+  updatedAt           DateTime        @updatedAt
 
   @@index([companyId, status, createdAt])
   @@index([status, updatedAt])
@@ -427,7 +609,7 @@ model MissionTask {
   missionId String
   mission   Mission  @relation(fields: [missionId], references: [id], onDelete: Cascade)
   taskId    String   @unique
-  task      Task     @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
   sequence  Int
   createdAt DateTime @default(now())
 
@@ -473,7 +655,15 @@ model Task {
   status              TaskStatus            @default(draft)
   state               TaskState             @default(DRAFT)
   riskLevel           String                @default("medium")
-  assignedAgent       String?
+  assignedAgent       String                @default("human-owner")
+  department          String                @default("operations")
+  requiredInputs      String[]
+  dependencyTaskIds   String[]
+  validationCriteria  String[]
+  approvalRequired    Boolean               @default(true)
+  resultSummary       String?
+  dueAt               DateTime?
+  blockedReason       String?
   branchName          String?
   pullRequestUrl      String?
   previewUrl          String?
@@ -832,4 +1022,618 @@ model AgentRunReport {
 
   @@index([projectAgentId, createdAt])
   @@index([taskId])
+}
+
+model Product {
+  id                String   @id @default(uuid())
+  companyId         String
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projectId         String?
+  project           Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  name              String
+  productType       String
+  lifecycleStage    String   @default("IDEA")
+  description       String
+  owner             String
+  currency          String   @default("SEK")
+  priceMinor        BigInt?
+  launchApprovedBy  String?
+  launchApprovedAt  DateTime?
+  launchedAt        DateTime?
+  createdBy         String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  qualityGates      ProductQualityGate[]
+  rights             ProductRights[]
+  campaigns         MarketingCampaign[]
+  feedback           BusinessFeedback[]
+
+  @@index([companyId, lifecycleStage])
+  @@index([projectId, lifecycleStage])
+}
+
+model ProductQualityGate {
+  id          String   @id @default(uuid())
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  gate        String
+  status      String   @default("PENDING")
+  evidence    String[]
+  checkedBy   String?
+  checkedAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([productId, gate])
+  @@index([productId, status])
+}
+
+model ProductRights {
+  id               String   @id @default(uuid())
+  productId        String
+  product          Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  ownership        String
+  authors          String[]
+  version          String
+  formats          String[]
+  territories      String[]
+  licensingTerms   String?
+  royaltyTerms     String?
+  copyrightNotice  String
+  evidence         String[]
+  approvedBy       String?
+  approvedAt       DateTime?
+  createdBy        String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([productId, createdAt])
+}
+
+model MarketingCampaign {
+  id                    String   @id @default(uuid())
+  companyId             String
+  company               Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  productId             String?
+  product               Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  name                  String
+  objective             String
+  audience              String
+  status                String   @default("DRAFT")
+  approvedBudgetMinor   BigInt   @default(0)
+  spentMinor            BigInt   @default(0)
+  currency              String   @default("SEK")
+  expectedOutcome       String
+  actualOutcome         String?
+  roiBasisPoints        Int?
+  lessons               String[]
+  budgetApprovedBy      String?
+  budgetApprovedAt      DateTime?
+  publicationApprovedBy String?
+  publicationApprovedAt DateTime?
+  publishedAt           DateTime?
+  createdBy             String
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([companyId, status])
+  @@index([productId, status])
+}
+
+model SalesOpportunity {
+  id                  String   @id @default(uuid())
+  companyId           String
+  company             Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  accountName         String
+  stage               String   @default("LEAD")
+  offer               String
+  pricingModel        String
+  valueMinor          BigInt
+  currency            String   @default("SEK")
+  probability         Int      @default(0)
+  forecastCloseAt     DateTime?
+  partnership         Boolean  @default(false)
+  upsell              String?
+  crossSell           String?
+  riskLevel           String   @default("medium")
+  approvalRequired    Boolean  @default(true)
+  approvedBy          String?
+  approvedAt          DateTime?
+  outcome             String?
+  owner               String
+  createdBy           String
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([companyId, stage])
+  @@index([forecastCloseAt])
+}
+
+model CustomerAccount {
+  id                 String   @id @default(uuid())
+  companyId          String
+  company            Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  accountName        String
+  externalReference String?  @unique
+  status             String   @default("ONBOARDING")
+  dataClassification String   @default("CONFIDENTIAL")
+  healthScore        Int?
+  churnRisk          String   @default("UNKNOWN")
+  retentionPlan      String?
+  owner              String
+  createdBy          String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  cases              CustomerCase[]
+  feedback           BusinessFeedback[]
+
+  @@index([companyId, status])
+  @@index([companyId, churnRisk])
+}
+
+model CustomerCase {
+  id          String          @id @default(uuid())
+  companyId   String
+  company     Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  accountId   String
+  account     CustomerAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  caseType    String
+  severity    String
+  status      String          @default("OPEN")
+  summary     String
+  resolution  String?
+  escalatedAt DateTime?
+  owner       String
+  createdBy   String
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([companyId, status])
+  @@index([accountId, status])
+}
+
+model BusinessFeedback {
+  id             String           @id @default(uuid())
+  companyId      String
+  company        Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  accountId      String?
+  account        CustomerAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  productId      String?
+  product        Product?         @relation(fields: [productId], references: [id], onDelete: SetNull)
+  source         String
+  category       String
+  summary        String
+  evidence       String[]
+  routes         String[]
+  status         String           @default("NEW")
+  idempotencyKey String           @unique
+  createdBy      String
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([companyId, status])
+  @@index([productId, status])
+  @@index([accountId, status])
+}
+
+model FinanceLedgerEntry {
+  id                    String   @id @default(uuid())
+  companyId             String
+  company               Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  entryType             String
+  amountMinor           BigInt
+  currency              String   @default("SEK")
+  category              String
+  department            String?
+  agentId               String?
+  model                 String?
+  taskId                String?
+  projectId             String?
+  customerId            String?
+  productId             String?
+  providerInvoiceRef    String?
+  providerUsageRef      String?
+  reconciliationStatus  String   @default("UNRECONCILED")
+  evidence              Json?
+  idempotencyKey        String   @unique
+  occurredAt            DateTime
+  recordedBy            String
+  createdAt             DateTime @default(now())
+
+  @@index([companyId, occurredAt])
+  @@index([projectId, occurredAt])
+  @@index([agentId, model, occurredAt])
+  @@index([reconciliationStatus, occurredAt])
+}
+
+model CfoReport {
+  id           String   @id @default(uuid())
+  companyId    String
+  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  period       String
+  periodStart  DateTime
+  periodEnd    DateTime
+  metrics      Json
+  forecast     Json
+  risks        String[]
+  generatedBy  String
+  approvedBy   String?
+  approvedAt   DateTime?
+  createdAt    DateTime @default(now())
+
+  @@unique([companyId, period, periodStart, periodEnd])
+  @@index([companyId, periodEnd])
+}
+
+model SecurityFinding {
+  id           String   @id @default(uuid())
+  companyId    String
+  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  domain       String
+  severity     String
+  status       String   @default("OPEN")
+  title        String
+  description  String
+  evidence     String[]
+  owner        String
+  dueAt        DateTime?
+  resolvedAt   DateTime?
+  createdBy    String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([companyId, severity, status])
+}
+
+model OperationalIncident {
+  id              String   @id @default(uuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  severity        String
+  status          String   @default("DETECTED")
+  title           String
+  detectedAt      DateTime @default(now())
+  containedAt     DateTime?
+  investigatedAt  DateTime?
+  recoveredAt     DateTime?
+  validatedAt     DateTime?
+  reportedAt      DateTime?
+  escalationAt    DateTime?
+  rootCause       String?
+  correctiveAction String?
+  lessons         String[]
+  evidence        String[]
+  owner           String
+  createdBy       String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([companyId, severity, status])
+}
+
+model ComplianceIssue {
+  id                     String   @id @default(uuid())
+  companyId              String
+  company                Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  framework              String
+  obligation             String
+  readinessStatus        String   @default("NOT_ASSESSED")
+  legalInformation       String
+  professionalAdviceNeeded Boolean @default(false)
+  professionalEscalation String?
+  owner                  String
+  evidence               String[]
+  dueAt                  DateTime?
+  createdBy              String
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@index([companyId, framework, readinessStatus])
+}
+
+model ServiceRecord {
+  id                 String   @id @default(uuid())
+  companyId          String
+  company            Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name               String
+  owner              String
+  customers          String[]
+  dataClassification String
+  dependencies       String[]
+  suppliers          String[]
+  sla                Json
+  recovery           Json
+  availabilityTarget Float?
+  capacity           Json?
+  monitoring         Json
+  continuityPlan     String
+  lastReviewAt       DateTime?
+  nextReviewAt       DateTime
+  status             String   @default("ACTIVE")
+  createdBy          String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  events             ServiceEvent[]
+
+  @@unique([companyId, name])
+  @@index([companyId, status, nextReviewAt])
+}
+
+model ServiceEvent {
+  id          String        @id @default(uuid())
+  serviceId   String
+  service     ServiceRecord @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  eventType   String
+  status      String
+  summary     String
+  evidence    String[]
+  approvedBy  String?
+  approvedAt  DateTime?
+  occurredAt  DateTime      @default(now())
+  createdBy   String
+  createdAt   DateTime      @default(now())
+
+  @@index([serviceId, eventType, occurredAt])
+}
+
+model StandardRegistry {
+  id                    String   @id @default(uuid())
+  companyId             String
+  company               Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  framework             String
+  edition               String
+  editionVerifiedAt     DateTime?
+  scope                 String
+  departments           String[]
+  controls              Json
+  process               String
+  owner                 String
+  testFrequencyDays     Int
+  exceptions            String[]
+  correctiveActions     String[]
+  nextReviewAt          DateTime
+  status                String   @default("DRAFT")
+  createdBy             String
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  evidence              ControlEvidence[]
+
+  @@unique([companyId, framework, edition])
+  @@index([companyId, status, nextReviewAt])
+}
+
+model ControlEvidence {
+  id               String           @id @default(uuid())
+  companyId        String
+  company          Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  standardId       String
+  standard         StandardRegistry @relation(fields: [standardId], references: [id], onDelete: Cascade)
+  controlKey       String
+  owner            String
+  process          String
+  evidenceRefs     String[]
+  testMethod       String
+  result           String
+  exception        String?
+  correctiveAction String?
+  testedAt         DateTime
+  expiresAt        DateTime
+  reviewAt         DateTime
+  createdBy        String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([standardId, controlKey, testedAt])
+  @@index([companyId, result, expiresAt])
+}
+
+model OutcomeReview {
+  id               String   @id @default(uuid())
+  companyId        String
+  company          Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projectId        String
+  expected         Json
+  actual           Json
+  dimensions       String[]
+  evidenceRefs     String[]
+  reviewedBy       String
+  reviewedAt       DateTime @default(now())
+  createdAt        DateTime @default(now())
+  lessons          LessonLearned[]
+
+  @@index([companyId, projectId, reviewedAt])
+}
+
+model LessonLearned {
+  id             String        @id @default(uuid())
+  companyId      String
+  company        Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  outcomeReviewId String
+  outcomeReview  OutcomeReview @relation(fields: [outcomeReviewId], references: [id], onDelete: Cascade)
+  summary        String
+  provenance     String
+  evidenceRefs   String[]
+  confidence     Float
+  createdBy      String
+  createdAt      DateTime      @default(now())
+  proposals      ImprovementProposal[]
+
+  @@index([companyId, createdAt])
+}
+
+model ImprovementProposal {
+  id             String         @id @default(uuid())
+  companyId      String
+  company        Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  lessonId       String
+  lesson         LessonLearned  @relation(fields: [lessonId], references: [id], onDelete: Restrict)
+  targetType     String
+  targetId       String?
+  proposedChange String
+  rationale      String
+  status         String         @default("PENDING_APPROVAL")
+  requestedBy    String
+  requestedAt    DateTime       @default(now())
+  decidedBy      String?
+  decidedAt      DateTime?
+  decisionNotes  String?
+
+  @@index([companyId, status, targetType])
+}
+
+model AgentRecommendation {
+  id             String   @id @default(uuid())
+  companyId      String
+  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  agentId        String
+  action         String
+  metrics        Json
+  evidenceRefs   String[]
+  rationale      String
+  status         String   @default("PENDING_APPROVAL")
+  expiresAt      DateTime?
+  requestedBy    String
+  requestedAt    DateTime @default(now())
+  decidedBy      String?
+  decidedAt      DateTime?
+
+  @@index([companyId, agentId, status])
+  @@index([expiresAt, status])
+}
+
+model WorldEntity {
+  id                 String   @id @default(uuid())
+  companyId          String
+  company            Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  entityType         String
+  name               String
+  canonicalKey       String
+  attributes         Json
+  sourceReference    String
+  sourceAuthority    String
+  validationStatus   String   @default("PROPOSED")
+  confidence         Float    @default(0)
+  classification     String   @default("INTERNAL")
+  validFrom          DateTime?
+  validUntil         DateTime?
+  createdBy          String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  outgoing           WorldRelation[] @relation("WorldRelationFrom")
+  incoming           WorldRelation[] @relation("WorldRelationTo")
+  scenarioChanges    TwinScenarioChange[]
+
+  @@unique([companyId, canonicalKey])
+  @@index([companyId, entityType, validationStatus])
+  @@index([companyId, classification])
+}
+
+model WorldRelation {
+  id               String      @id @default(uuid())
+  companyId        String
+  company          Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  fromEntityId     String
+  fromEntity       WorldEntity @relation("WorldRelationFrom", fields: [fromEntityId], references: [id], onDelete: Restrict)
+  toEntityId       String
+  toEntity         WorldEntity @relation("WorldRelationTo", fields: [toEntityId], references: [id], onDelete: Restrict)
+  relationType     String
+  attributes       Json
+  sourceReference  String
+  confidence       Float       @default(0)
+  validationStatus String      @default("PROPOSED")
+  createdBy        String
+  createdAt        DateTime    @default(now())
+
+  @@unique([companyId, fromEntityId, toEntityId, relationType])
+  @@index([companyId, relationType])
+}
+
+model TwinScenario {
+  id             String               @id @default(uuid())
+  companyId      String
+  company        Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name           String
+  description    String
+  status         String               @default("DRAFT")
+  baselineAt     DateTime?
+  horizonDays    Int                  @default(90)
+  assumptions    Json
+  createdBy      String
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  changes        TwinScenarioChange[]
+  result         TwinScenarioResult?
+
+  @@index([companyId, status, createdAt])
+}
+
+model TwinScenarioChange {
+  id              String        @id @default(uuid())
+  scenarioId      String
+  scenario        TwinScenario  @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  entityId        String?
+  entity          WorldEntity?  @relation(fields: [entityId], references: [id], onDelete: SetNull)
+  entityType      String
+  action          String
+  patch           Json
+  rationale       String
+  sourceReference String
+  createdBy       String
+  createdAt       DateTime      @default(now())
+
+  @@index([scenarioId, createdAt])
+  @@index([entityId])
+}
+
+model TwinScenarioResult {
+  id               String       @id @default(uuid())
+  scenarioId       String       @unique
+  scenario         TwinScenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  dimensions       Json
+  assumptions      Json
+  uncertainty      Json
+  confidence       Float
+  missingData      String[]
+  executionBlocked Boolean      @default(true)
+  recordedBy       String
+  recordedAt       DateTime     @default(now())
+
+  @@index([recordedAt])
+}
+
+model HealthSnapshot {
+  id                 String   @id @default(uuid())
+  companyId          String
+  company            Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  asOf               DateTime
+  overallScore       Float?
+  dimensions         Json
+  missingData        String[]
+  evidenceRefs       String[]
+  calculationVersion String
+  createdBy          String
+  createdAt          DateTime @default(now())
+
+  @@index([companyId, asOf])
+}
+
+model AttentionItem {
+  id                     String   @id @default(uuid())
+  companyId              String
+  company                Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  title                  String
+  category               String
+  valueScore             Float
+  urgencyScore           Float
+  impactScore            Float
+  estimatedReviewMinutes Int
+  priorityScore          Float
+  status                 String   @default("OPEN")
+  sourceRefs             String[]
+  dueAt                  DateTime?
+  createdBy              String
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@index([companyId, status, priorityScore])
 }

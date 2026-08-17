@@ -1,0 +1,18 @@
+{
+  "id": "boosta-campaign-verification",
+  "version": "1.0.0",
+  "trigger": "approved campaign webhook",
+  "filters": ["require Mission and EditorialJob identifiers"],
+  "normalization": ["read JSON body"],
+  "deterministicSteps": ["validate identifiers", "validate SHA-256 checksum", "validate destinations and languages"],
+  "aiDecisionSteps": [],
+  "actions": ["return bounded verification evidence"],
+  "validation": ["status equals verified", "workflow version is present", "checkedAt is present"],
+  "exceptionHandling": ["return non-2xx and prevent Mission completion"],
+  "retryStrategy": "worker retry only after operator correction",
+  "approvalGates": ["campaign-draft"],
+  "expectedOutput": "versioned verification evidence",
+  "owner": "boosta-marketing",
+  "businessId": "BSTA-COMP-001",
+  "enabled": true
+}

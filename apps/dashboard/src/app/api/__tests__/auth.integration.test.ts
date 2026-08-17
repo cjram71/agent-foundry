@@ -13,6 +13,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
+const configuredDatabase = process.env.DATABASE_URL;
+if (TEST_DB && configuredDatabase) {
+  const testUrl = new URL(TEST_DB);
+  const configuredUrl = new URL(configuredDatabase);
+  if (testUrl.hostname === configuredUrl.hostname && testUrl.port === configuredUrl.port && testUrl.pathname === configuredUrl.pathname) {
+    throw new Error('TEST_DATABASE_URL must not point to the configured application database');
+  }
+}
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'integration-test-jwt-secret-with-64-characters-padding-y';
 if (TEST_DB) process.env.DATABASE_URL = TEST_DB;
 

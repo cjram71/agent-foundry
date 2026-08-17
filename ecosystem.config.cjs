@@ -6,8 +6,8 @@ module.exports = {
     {
       name: 'foundry-dashboard',
       cwd: __dirname,
-      script: 'npm',
-      args: 'run start --workspace=apps/dashboard -- --hostname 127.0.0.1',
+      script: 'apps/dashboard/.next/standalone/apps/dashboard/server.js',
+      interpreter: 'node',
       env: { ...sharedEnv, NODE_ENV: 'production', HOSTNAME: '127.0.0.1', PORT: '3000' },
     },
     {

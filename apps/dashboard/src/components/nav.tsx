@@ -7,8 +7,14 @@ const sections = [
     "BOOSTA FÖRLAG",
     [
       ["/", "Home"],
+      ["/ceo", "AI CEO"],
       ["/approvals", "My decisions"],
-      ["/projects", "Projects"],
+      ["/opportunities", "Opportunities"],
+      ["/projects", "Workspaces"],
+      ["/project-governance", "Project governance"],
+      ["/business-delivery", "Business delivery"],
+      ["/operations", "Finance & operations"],
+      ["/standards", "Standards & evidence"],
       ["/editorial", "Content pipeline"],
     ],
   ],
@@ -24,13 +30,14 @@ const sections = [
     "KNOWLEDGE",
     [
       ["/intelligence/agents", "AI Workforce"],
+      ["/workforce", "Departments"],
       ["/intelligence/knowledge", "Company memory"],
     ],
   ],
   [
     "SETTINGS",
     [
-      ["/businesses", "Company & constitution"],
+      ["/businesses", "Company identity & rules"],
       ["/intelligence/skills", "Skills"],
       ["/intelligence/workflows", "Workflows"],
       ["/platform/models-cost", "AI Cost"],

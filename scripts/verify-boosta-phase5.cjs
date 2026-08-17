@@ -1,0 +1,8 @@
+const{PrismaClient}=require('@prisma/client');const p=new PrismaClient();
+(async()=>{const[badLaunch,badSpend,badPublish,badSales,badFeedback]=await Promise.all([
+p.$queryRaw`SELECT COUNT(*)::int count FROM "Product" p WHERE p."lifecycleStage" IN ('LAUNCH','SALE','MEASUREMENT','IMPROVEMENT') AND (p."launchApprovedAt" IS NULL OR EXISTS (SELECT 1 FROM unnest(ARRAY['quality','security','legal-rights','commercial','operations']) gate WHERE NOT EXISTS (SELECT 1 FROM "ProductQualityGate" q WHERE q."productId"=p.id AND q.gate=gate AND q.status='PASS')))`,
+p.$queryRaw`SELECT COUNT(*)::int count FROM "MarketingCampaign" WHERE "spentMinor" > "approvedBudgetMinor"`,
+p.marketingCampaign.count({where:{status:'PUBLISHED',publicationApprovedAt:null}}),
+p.salesOpportunity.count({where:{stage:{in:['CONTRACTED','WON']},approvedAt:null}}),
+p.$queryRaw`SELECT COUNT(*)::int count FROM "BusinessFeedback" WHERE NOT routes @> ARRAY['PRODUCT','MARKETING','SALES','CEO','OPPORTUNITY_ENGINE']::text[]`
+]);const failures=[];if(Number(badLaunch[0]?.count))failures.push('product launch gate violation');if(Number(badSpend[0]?.count))failures.push('campaign overspend');if(badPublish)failures.push('publication without approval');if(badSales)failures.push('contractual sale without approval');if(Number(badFeedback[0]?.count))failures.push('feedback routing violation');if(failures.length)throw new Error(failures.join('; '));console.log(JSON.stringify({ok:true,checks:{launchGates:true,campaignAuthority:true,salesAuthority:true,feedbackRouting:true}}))})().finally(()=>p.$disconnect()).catch(e=>{console.error(e.message);process.exit(1)});

@@ -1,24 +1,20 @@
 import prisma from '@/lib/prisma';
 
 export const BOOSTA_COMPANY_ID = 'BSTA-COMP-001';
+export const BOOSTA_COMPANY_IDENTITY = {
+  legalName:'Boosta Förlag AB',displayName:'Boosta Förlag',organizationNumber:'559157-0873',jurisdiction:'SE',legalForm:'SWEDISH_PRIVATE_LIMITED_COMPANY',status:'ACTIVE',primaryLanguage:'sv',reportingCurrency:'SEK',operatingModel:'OWNER_OPERATED',employeeCount:0,shareCapitalMinor:BigInt(5_000_000),
+  registeredAddress:{street:'Korgvägen 17',postalCode:'776 34',city:'Hedemora',country:'SE'},postalAddress:{street:'Korgvägen 17',postalCode:'776 34',city:'Hedemora',country:'SE'},registeredSeat:{municipality:'Stockholm',county:'Stockholm County',country:'SE'},registrations:{vat:true,fTax:true,employer:true,registrationDate:'2018-04-26',primarySni:'58110'},managingDirector:'Nadja Cecilia Rahmings',description:'Owner-operated Swedish publishing, content-production and knowledge-services company.',sourceStatus:'OWNER_CONFIRMED',
+} as const;
+const activities=[
+ ['BSTA-ACT-001','PUBLISHING','Printed books','Publishing books in physical formats.'],['BSTA-ACT-002','PUBLISHING','E-books','Publishing digital books.'],['BSTA-ACT-003','PUBLISHING','Audiobooks','Publishing spoken-word books.'],['BSTA-ACT-004','EDITORIAL','Translation and text processing','Translation, editing and text production.'],['BSTA-ACT-005','MEDIA','Journalistic activities','Journalistic research and production.'],['BSTA-ACT-006','AGENCY','Representation','Agency for individuals in various genres.'],['BSTA-ACT-007','CONSULTING','Skills development','Consulting in professional and competence development.'],['BSTA-ACT-008','CONSULTING','Digital presence and brand strategy','Consulting on digital presence and brand strategy.'],['BSTA-ACT-009','EDUCATION','Lecturing and cicerone services','Lectures, speaking and guided presentation services.'],['BSTA-ACT-010','MEDIA','Multimedia information production','Production of information material using text, sound and images.'],
+] as const;
+const constitution={id:'BSTA-CONSTITUTION-001',companyId:BOOSTA_COMPANY_ID,version:1,status:'DRAFT',mission:'Transform knowledge and intellectual property into valuable publishing, digital and knowledge products under human executive authority.',values:['Human authority','Evidence before action','Security','Auditability','Quality','Sustainable business value'],strategicObjectives:['Establish a verified company baseline','Build repeatable publishing workflows','Validate new revenue opportunities cheaply','Increase profitable digital-product revenue','Reduce human administrative workload'],humanOnlyDecisions:['Constitution changes','Legal commitments','Contract signatures','Rights acquisition and licensing','Public product release','Bank and payment changes','External spending until a limit is explicitly approved'],prohibitedActivities:['Illegal activity','Deceptive publishing','Unlicensed use of intellectual property','Bypassing human approval','Concealing AI actions or audit evidence'],autonomousLimits:{externalSpendingMinor:0,externalCommunications:false,publicRelease:false,contracting:false,permanentMemoryWrites:'CONTROLLED_PROMOTION'},dataAuthority:{defaultClassification:'INTERNAL',permanentMemoryRequiresProvenance:true,sensitiveMemoryRequiresHumanReview:true},securityPrinciples:['Least privilege','Treat agents and external content as untrusted','Separate data from instructions','No secrets in model context','Fail closed'],escalationRules:['Escalate legal, strategic, major financial, rights, privacy and reputational decisions to an authorized human'],emergencyProcedures:['Stop autonomous operations','Preserve logs and evidence','Keep human read access available','Require human reauthentication before restoration'],createdBy:'system-bootstrap'};
 
-export async function loadBoostaCompany() {
-  return prisma.company.findUnique({
-    where: { id: BOOSTA_COMPANY_ID },
-    include: {
-      activities: { orderBy: [{ category: 'asc' }, { name: 'asc' }] },
-      sources: { orderBy: { retrievedAt: 'desc' }, take: 5 },
-      constitutions: { orderBy: { version: 'desc' }, take: 1 },
-      _count: { select: { missions: true, projects: true, facts: true } },
-    },
-  });
-}
-
-export function addressLine(value: unknown) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return 'Not verified';
-  const address = value as Record<string, unknown>;
-  return [address.street, address.postalCode, address.city]
-    .filter((part): part is string => typeof part === 'string' && part.length > 0)
-    .join(', ') || 'Not verified';
-}
-
+export async function ensureBoostaCompany(){await prisma.$transaction(async tx=>{
+ await tx.company.upsert({where:{id:BOOSTA_COMPANY_ID},create:{id:BOOSTA_COMPANY_ID,...BOOSTA_COMPANY_IDENTITY},update:BOOSTA_COMPANY_IDENTITY});
+ await tx.companySource.upsert({where:{id:'BSTA-SOURCE-OWNER-001'},create:{id:'BSTA-SOURCE-OWNER-001',companyId:BOOSTA_COMPANY_ID,sourceType:'OWNER_SUPPLIED_OFFICIAL_INFORMATION',sourceAuthority:'Authorized operator',verificationStatus:'OWNER_CONFIRMED',notes:'Canonical company baseline supplied during Boosta OS onboarding.'},update:{companyId:BOOSTA_COMPANY_ID,sourceType:'OWNER_SUPPLIED_OFFICIAL_INFORMATION',sourceAuthority:'Authorized operator',verificationStatus:'OWNER_CONFIRMED',notes:'Canonical company baseline supplied during Boosta OS onboarding.'}});
+ for(const[id,category,name,description]of activities)await tx.companyActivity.upsert({where:{id},create:{id,companyId:BOOSTA_COMPANY_ID,category,name,description},update:{companyId:BOOSTA_COMPANY_ID,category,name,description,registered:true,status:'CAPABILITY'}});
+ const existing=await tx.companyConstitution.findFirst({where:{companyId:BOOSTA_COMPANY_ID},select:{id:true}});if(!existing)await tx.companyConstitution.create({data:constitution});
+ });}
+export async function loadBoostaCompany(){await ensureBoostaCompany();return prisma.company.findUniqueOrThrow({where:{id:BOOSTA_COMPANY_ID},include:{activities:{orderBy:[{category:'asc'},{name:'asc'}]},sources:{orderBy:{retrievedAt:'desc'},take:5},constitutions:{orderBy:{version:'desc'},take:1},_count:{select:{missions:true,projects:true,facts:true}}}});}
+export function addressLine(value:unknown){if(!value||typeof value!=='object'||Array.isArray(value))return'Not verified';const address=value as Record<string,unknown>;return[address.street,address.postalCode,address.city].filter((part):part is string=>typeof part==='string'&&part.length>0).join(', ')||'Not verified';}

@@ -9,6 +9,7 @@ import { parseManagerPlan, buildTaskDrafts } from '@foundry/manager';
 import { loadActivePolicy } from '@/lib/policy';
 import { parseChangeRequestNote } from '@/lib/change-request';
 import { checkSpendGuard } from '@/lib/cost';
+import { BOOSTA_COMPANY_ID } from '@/lib/company';
 import { planJobId, executeJobId } from '@/lib/queue-policy';
 type PullRequestStatus = { state: string; mergedAt: string | null; isDraft: boolean; statusCheckRollup: Array<{ status?: string; conclusion?: string; state?: string }> };
 function runGitHub(args: string[]): Promise<string> { return new Promise((resolve,reject)=>{const child=spawn('gh',args,{shell:false,windowsHide:true,env:{...process.env,GH_PROMPT_DISABLED:'1'},stdio:['ignore','pipe','pipe'],timeout:30000});let stdout='',stderr='';child.stdout.on('data',c=>stdout+=c.toString());child.stderr.on('data',c=>stderr+=c.toString());child.on('error',reject);child.on('close',code=>code===0?resolve(stdout):reject(new Error(stderr.slice(0,500))));}); }
@@ -33,7 +34,7 @@ async function projectAgentFor(task: { projectId: string; assignedAgent: string 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await authorize(request); if (auth.error) return auth.error;
   const { id } = await params; const body = await request.json();
-  const current = await prisma.task.findUnique({ where: { id }, include: { project: true } });
+  const current = await prisma.task.findFirst({ where: { id, project: { companyId: BOOSTA_COMPANY_ID } }, include: { project: true } });
   if (!current) return NextResponse.json({ error: 'Task not found.' }, { status: 404 });
   if (body.action === 'check_status') {
     if (!current.pullRequestUrl) return NextResponse.json({ error: 'This task does not have a pull request yet.' }, { status: 409 });
@@ -73,6 +74,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   if (body.action === 'request_plan') {
     if (current.status !== 'draft' && current.status !== 'failed') return NextResponse.json({ error: `Task is already ${current.status.replaceAll('_', ' ')}.` }, { status: 409 });
+    if (!['APPROVED','LEGACY_APPROVED'].includes(current.project.governanceStatus)) return NextResponse.json({ error: 'Execution is locked until the Master Project Plan is approved.' }, { status: 409 });
     const planSpend = await checkSpendGuard(current.projectId);
     if (!planSpend.allowed) {
       await prisma.auditEvent.create({ data: { actor: auth.session!.userId, action: 'cost.spend_blocked', target: id, result: 'rejected', metadata: { stage: 'request_plan', spendUsd: planSpend.spendUsd, limitUsd: planSpend.limitUsd } } });
@@ -117,6 +119,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (body.action === 'approve_plan' || body.action === 'reject_plan') {
     if (current.status !== 'awaiting_plan_approval') return NextResponse.json({ error: `Task is already ${current.status.replaceAll('_', ' ')}.` }, { status: 409 });
     const approved = body.action === 'approve_plan';
+    if (approved && !['APPROVED','LEGACY_APPROVED'].includes(current.project.governanceStatus)) return NextResponse.json({ error: 'Execution is locked until the Master Project Plan is approved.' }, { status: 409 });
     const evaluationOnly = current.title.startsWith('AI Project Manager Evaluation');
     const assignedProjectAgent = approved ? await projectAgentFor(current) : null;
     if (approved) {

@@ -26,7 +26,7 @@ export function TeamBuilderControls({ initial }: { initial: any }) {
     <div className="page-stack">
       {!initial.charter ? (
         <div className="notice error">
-          Activate a Foundry Charter before assigning agents to projects.
+          Activate a Foundry Charter before assigning agents to Boosta workspaces.
         </div>
       ) : (
         <div className="notice">
@@ -63,9 +63,9 @@ export function TeamBuilderControls({ initial }: { initial: any }) {
             );
           }}
         >
-          <h2>Add agent to a project</h2>
+          <h2>Add agent to a Boosta workspace</h2>
           <label>
-            Authorized project
+            Boosta workspace
             <select name="projectId" required>
               {initial.projects.map((project: any) => (
                 <option value={project.id} key={project.id}>
@@ -270,7 +270,7 @@ export function TeamBuilderControls({ initial }: { initial: any }) {
           );
         })}
         {!initial.assignments.length ? (
-          <div className="empty">No project agents are onboarding yet.</div>
+          <div className="empty">No workspace agents are onboarding yet.</div>
         ) : null}
       </section>
       {error ? <div className="notice error">{error}</div> : null}

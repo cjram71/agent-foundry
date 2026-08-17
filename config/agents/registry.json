@@ -38,5 +38,13 @@
     "permissions":{"filesystem":{"read":["/opt/gizmo_vps/data/agent-foundry/workspaces"],"write":["/opt/gizmo_vps/data/agent-foundry/workspaces"]},"network":[],"tools":{"allow":["query-memory","write-workspace"],"approvalRequired":[],"deny":["unrestricted-root-shell","docker-socket","disable-audit-logs","self-approve-privilege"]},"databases":{"read":["structured-memory"],"write":["artifact-memory"]}},
     "memory":{"read":["working","structured"],"write":["working","artifact"]},"budget":{"maximumTaskCostUsd":3,"maximumDailyCostUsd":15,"tokenLimit":90000,"retries":1},
     "risk":{"classification":"green","approvalRequired":false,"escalationRules":["require human approval before publishing","flag claims without approved evidence"]},"evaluation":{"requiredTests":["brand-compliance","claim-grounding","publication-gate"]},"logging":{"enabled":true}
+  },
+  {
+    "id":"boosta-marketing","name":"Boosta Marketing Agent","version":"1.0.0","status":"staging","mission":"Turn approved Boosta campaign briefs into grounded bilingual drafts and verified publish-ready packages without publishing externally.",
+    "responsibilities":["apply company and brand rules","draft Swedish and English campaign content","flag unsupported claims and rights","submit drafts for human approval","request deterministic n8n package verification"],
+    "models":{"primary":"cloud:reasoning","fallback":"local:ollama","permitted":["cloud:reasoning","local:ollama"]},
+    "permissions":{"filesystem":{"read":["/home/cory/boosta/company","/home/cory/boosta/work/processing"],"write":["/home/cory/boosta/work/review","/home/cory/boosta/work/publish-ready"]},"network":["n8n.internal","approved-model-api"],"tools":{"allow":["query-memory","invoke-n8n-campaign-verification"],"approvalRequired":[],"deny":["publish-external","unrestricted-root-shell","docker-socket","disable-audit-logs","self-approve-privilege"]},"databases":{"read":["missions","structured-memory"],"write":["mission-events","memory-candidates","audit-events"]}},
+    "memory":{"read":["structured","semantic"],"write":["working","artifact"]},"budget":{"maximumTaskCostUsd":5,"maximumDailyCostUsd":20,"tokenLimit":50000,"retries":2},
+    "risk":{"classification":"yellow","approvalRequired":false,"escalationRules":["require human approval before n8n verification","never publish externally","flag every unsupported claim"]},"evaluation":{"requiredTests":["brand-compliance","claim-grounding","campaign-approval-gate","n8n-verification"]},"logging":{"enabled":true}
   }
 ]

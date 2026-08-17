@@ -16,7 +16,6 @@ export default async function CompanyPage() {
   await requireDashboardAdmin();
   const company = await loadBoostaCompany();
 
-  if (!company) return <OpsPage eyebrow="COMPANY" title="Company profile" description="The verified business context used by the AI workforce."><section className="panel"><Empty>Apply the Boosta company migration to load the company profile.</Empty></section></OpsPage>;
 
   const constitution = company.constitutions[0];
   const grouped = company.activities.reduce<Record<string, typeof company.activities>>((result, activity) => {
@@ -24,10 +23,10 @@ export default async function CompanyPage() {
     return result;
   }, {});
 
-  return <OpsPage eyebrow="BOOSTA FÖRLAG AB" title="Your company" description="Verified facts, business capabilities and the rules that keep AI work under human control.">
+  return <OpsPage eyebrow="BOOSTA FÖRLAG AB" title="Boosta company identity" description="The company identity is configured automatically and locked. Verified facts and operating rules remain visible to the authorized owner.">
     <section className="company-hero panel">
-      <div><span className="company-status">{company.status}</span><h2>{company.legalName}</h2><p>{company.description}</p></div>
-      <div className="company-actions">{constitution?.status === 'ACTIVE' ? <Link className="button primary" href="/">Continue company setup</Link> : <ConstitutionApproval/>}<Link className="button secondary" href="/">Back to headquarters</Link></div>
+      <div><span className="company-status">{company.status} · IDENTITY LOCKED</span><h2>{company.legalName}</h2><p>{company.description}</p><small>Boosta OS is permanently scoped to organization {company.organizationNumber}. This identity cannot be replaced, renamed, or deleted from the dashboard or API.</small></div>
+      <div className="company-actions">{constitution?.status === 'ACTIVE' ? <span className="badge status-approved">Company configured</span> : <ConstitutionApproval/>}<Link className="button secondary" href="/">Back to headquarters</Link></div>
     </section>
 
     <section className="company-facts">
@@ -44,7 +43,7 @@ export default async function CompanyPage() {
       <div className="panel"><div className="panel-head"><div><h2>Human control</h2><p>Company constitution · version {constitution?.version ?? 'not created'}</p></div><span className={`badge ${constitution?.status === 'ACTIVE' ? 'status-approved' : 'status-awaiting_plan_approval'}`}>{constitution?.status ?? 'MISSING'}</span></div>{constitution ? <><p className="constitution-mission">{constitution.mission}</p><h3 className="list-title">Always requires a human</h3><ul className="plain-list">{constitution.humanOnlyDecisions.map((decision) => <li key={decision}>{decision}</li>)}</ul>{constitution.status === 'ACTIVE' ? <p className="active-notice">Active company rules. AI cannot modify them.</p> : <><p className="draft-warning">These rules are a draft and no company discovery will begin until you approve them.</p><ConstitutionApproval/></>}</> : <Empty>No constitution has been created.</Empty>}</div>
     </section>
 
-    <section className="panel"><div className="panel-head"><div><h2>Company record</h2><p>What the operating system can currently prove</p></div></div><div className="record-grid"><Record label="Company facts" value={company._count.facts} detail="Structured facts with provenance"/><Record label="Sources" value={company.sources.length} detail="Recent evidence sources loaded"/><Record label="Projects" value={company._count.projects} detail="Company-scoped projects"/><Record label="Missions" value={company._count.missions} detail="Company-scoped missions"/></div><p className="source-note">Baseline status: {words(company.sourceStatus)}. Missing products, rights, contracts, customers and current financial records remain explicitly unknown until verified.</p></section>
+    <section className="panel"><div className="panel-head"><div><h2>Locked company record</h2><p>Automatically maintained by Boosta OS from the canonical company baseline</p></div></div><div className="record-grid"><Record label="Company facts" value={company._count.facts} detail="Structured facts with provenance"/><Record label="Sources" value={company.sources.length} detail="Recent evidence sources loaded"/><Record label="Workspaces" value={company._count.projects} detail="Boosta-scoped technical workspaces"/><Record label="Missions" value={company._count.missions} detail="Company-scoped missions"/></div><p className="source-note">Baseline status: {words(company.sourceStatus)}. Missing products, rights, contracts, customers and current financial records remain explicitly unknown until verified.</p></section>
   </OpsPage>;
 }
 

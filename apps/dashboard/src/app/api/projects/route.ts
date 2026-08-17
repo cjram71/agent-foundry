@@ -1,15 +1,16 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getSession, isSameOrigin } from '@/lib/auth';
-import { parseProjectInput, parsePublicUrl, projectTypes } from '@/lib/validation';
+import { parsePublicUrl, projectTypes } from '@/lib/validation';
 import { enqueuePlan } from '@/lib/queue';
 import { transitionTask, emitTaskEvent } from '@foundry/state-machine';
 import { isPolicyCeiling } from '@foundry/policy';
 import { checkSpendGuard } from '@/lib/cost';
+import { BOOSTA_COMPANY_ID } from '@/lib/company';
 
 async function requireAdmin(request?: Request) { const session=await getSession();if(!session)return{error:NextResponse.json({error:'Unauthorized'},{status:401})};if(session.role!=='ADMIN')return{error:NextResponse.json({error:'Forbidden'},{status:403})};if(request&&!isSameOrigin(request))return{error:NextResponse.json({error:'Invalid origin'},{status:403})};return{session}; }
-export async function GET(){const auth=await requireAdmin();if(auth.error)return auth.error;return NextResponse.json(await prisma.project.findMany({orderBy:{createdAt:'desc'},include:{_count:{select:{tasks:true}}}}));}
-export async function POST(request:Request){try{const auth=await requireAdmin(request);if(auth.error){console.warn('[api/projects] create denied');return auth.error}const data=parseProjectInput(await request.json());const existing=await prisma.project.findFirst({where:{githubOwner:{equals:data.githubOwner,mode:'insensitive'},githubRepo:{equals:data.githubRepository,mode:'insensitive'}}});if(existing)return NextResponse.json({error:'This GitHub repository is already registered',projectId:existing.id},{status:409});const project=await prisma.$transaction(async tx=>{const created=await tx.project.create({data:{name:data.name,githubOwner:data.githubOwner,githubRepo:data.githubRepository,defaultBranch:data.defaultBranch,authorisedStatus:false,spendingLimit:data.spendingLimit,projectType:data.projectType,productionUrl:data.productionUrl},include:{_count:{select:{tasks:true}}}});await tx.projectPolicy.create({data:{projectId:created.id,version:1,active:true,createdBy:auth.session!.userId}});await tx.auditEvent.create({data:{actor:auth.session!.userId,action:'project.created',target:created.id,result:'success',metadata:{repository:`${created.githubOwner}/${created.githubRepo}`,projectType:created.projectType,productionUrl:created.productionUrl}}});return created;});console.info('[api/projects] project created',{projectId:project.id,repository:project.githubOwner+'/'+project.githubRepo});return NextResponse.json(project,{status:201});}catch(error){const message=error instanceof Error?error.message:'Failed to create project';console.warn('[api/projects] create rejected',{error:message});return NextResponse.json({error:message},{status:400});}}
+export async function GET(){const auth=await requireAdmin();if(auth.error)return auth.error;return NextResponse.json(await prisma.project.findMany({where:{companyId:BOOSTA_COMPANY_ID},orderBy:{createdAt:'desc'},include:{_count:{select:{tasks:true}}}}));}
+export async function POST(request:Request){const auth=await requireAdmin(request);if(auth.error)return auth.error;return NextResponse.json({error:'Boosta OS is a single-company system. Workspaces are created only by approved company workflows.'},{status:405,headers:{Allow:'GET, PATCH'}});}
 export async function PATCH(request:Request){try{const auth=await requireAdmin(request);if(auth.error)return auth.error;const body=await request.json();if(typeof body.id!=='string')return NextResponse.json({error:'Project id is required'},{status:400});if(body.action==='authorize'||body.action==='deauthorize'){
   const authorisedStatus=body.action==='authorize';
   if(authorisedStatus){
@@ -19,7 +20,7 @@ export async function PATCH(request:Request){try{const auth=await requireAdmin(r
   const project=await prisma.project.update({where:{id:body.id},data:{authorisedStatus},include:{_count:{select:{tasks:true}}}});
   await prisma.auditEvent.create({data:{actor:auth.session!.userId,action:authorisedStatus?'project.authorized':'project.deauthorized',target:project.id,result:'success'}});
   let managerTaskId:string|undefined;
-  if(authorisedStatus){
+  if(authorisedStatus&&project.projectType!=='company_discovery'){
     const active=await prisma.task.findFirst({where:{projectId:project.id,title:{startsWith:'AI Project Manager Evaluation'},status:{in:['draft','planning','awaiting_plan_approval','approved','queued','coding','testing','reviewing','awaiting_human_review','approved_for_merge']}}});
     if(active) managerTaskId=active.id;
     else {
@@ -53,4 +54,4 @@ if(body.action==='update_policy'){
   if(!policy)return NextResponse.json({message:'That policy ceiling is already active.',unchanged:true});
   return NextResponse.json({policy});
 }if(body.action==='update_public_link'){const projectType=typeof body.projectType==='string'?body.projectType:'web_app';if(!projectTypes.has(projectType))throw new Error('Invalid project type');const productionUrl=parsePublicUrl(body.productionUrl);const project=await prisma.project.update({where:{id:body.id},data:{projectType,productionUrl},include:{_count:{select:{tasks:true}}}});await prisma.auditEvent.create({data:{actor:auth.session!.userId,action:'project.public_link_updated',target:project.id,result:'success',metadata:{projectType,productionUrl}}});return NextResponse.json(project);}return NextResponse.json({error:'Invalid project action'},{status:400});}catch(error){return NextResponse.json({error:error instanceof Error?error.message:'Project update failed'},{status:400});}}
-export async function DELETE(request:Request){const auth=await requireAdmin(request);if(auth.error)return auth.error;const body=await request.json();if(typeof body.id!=='string'||typeof body.confirmation!=='string')return NextResponse.json({error:'Project id and confirmation are required'},{status:400});const project=await prisma.project.findUnique({where:{id:body.id},include:{_count:{select:{tasks:true}}}});if(!project)return NextResponse.json({error:'Project not found'},{status:404});const expected=`${project.githubOwner}/${project.githubRepo}`;if(body.confirmation!==expected)return NextResponse.json({error:`Type ${expected} exactly to confirm deletion`},{status:400});await prisma.$transaction([prisma.auditEvent.create({data:{actor:auth.session!.userId,action:'project.deleted',target:project.id,result:'success',metadata:{repository:expected,deletedTasks:project._count.tasks}}}),prisma.project.delete({where:{id:project.id}})]);return NextResponse.json({success:true,deletedProject:expected,deletedTasks:project._count.tasks});}
+export async function DELETE(request:Request){const auth=await requireAdmin(request);if(auth.error)return auth.error;return NextResponse.json({error:'Boosta workspaces cannot be deleted from the dashboard.'},{status:405,headers:{Allow:'GET, PATCH'}});}
