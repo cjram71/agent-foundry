@@ -1,8 +1,8 @@
 export type ToolRisk = 'low' | 'medium' | 'high';
 export type Validator = (value: unknown) => boolean;
 export interface ToolContract { id:string; description:string; action:string; requiredPermission:string; risk:ToolRisk; approvalRequired:boolean; credentialReference?:string; timeoutMs:number; maxRetries:number; rateLimitPerMinute:number; audit:boolean; idempotent:boolean; validateInput:Validator; validateOutput:Validator }
-export interface ToolInvocationContext { missionId?:string; taskId?:string; actor:string; correlationId?:string; permissions:readonly string[]; approvedActions?:readonly string[] }
-export interface ToolAudit { actor:string; toolId:string; action:string; result:'allowed'|'denied'|'success'|'failed'; reason?:string; missionId?:string; taskId?:string; correlationId?:string; attempt?:number; durationMs?:number }
+export interface ToolInvocationContext { missionId?:string; taskId?:string; actor:string; purpose?:string; correlationId?:string; permissions:readonly string[]; approvedActions?:readonly string[] }
+export interface ToolAudit { actor:string; toolId:string; action:string; result:'allowed'|'denied'|'success'|'failed'; purpose?:string; requiredPermission?:string; risk?:ToolRisk; timestamp:number; reason?:string; missionId?:string; taskId?:string; correlationId?:string; attempt?:number; durationMs?:number }
 export type ToolHandler = (input:unknown, context:ToolInvocationContext, signal:AbortSignal)=>Promise<unknown>;
 export type AuditSink = (event:ToolAudit)=>Promise<void>;
 
@@ -44,6 +44,6 @@ export class ToolGateway {
     }
     throw new Error('Tool invocation failed');
   }
-  private event(context:ToolInvocationContext,contract:Pick<ToolContract,'id'|'action'>,result:ToolAudit['result']):ToolAudit{return{actor:context.actor,toolId:contract.id,action:contract.action,result,missionId:context.missionId,taskId:context.taskId,correlationId:context.correlationId};}
-  private async deny(toolId:string,reason:string,context:ToolInvocationContext,action='unknown'):Promise<never>{await this.auditSink({actor:context.actor,toolId,action,result:'denied',reason,missionId:context.missionId,taskId:context.taskId,correlationId:context.correlationId});throw new Error(`Tool denied: ${reason}`);}
+  private event(context:ToolInvocationContext,contract:Pick<ToolContract,'id'|'action'|'requiredPermission'|'risk'>,result:ToolAudit['result']):ToolAudit{return{actor:context.actor,toolId:contract.id,action:contract.action,result,purpose:context.purpose,requiredPermission:contract.requiredPermission,risk:contract.risk,timestamp:this.now(),missionId:context.missionId,taskId:context.taskId,correlationId:context.correlationId};}
+  private async deny(toolId:string,reason:string,context:ToolInvocationContext,action='unknown'):Promise<never>{await this.auditSink({actor:context.actor,toolId,action,result:'denied',purpose:context.purpose,timestamp:this.now(),reason,missionId:context.missionId,taskId:context.taskId,correlationId:context.correlationId});throw new Error(`Tool denied: ${reason}`);}
 }
