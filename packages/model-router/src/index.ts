@@ -1,10 +1,20 @@
 export type ModelProvider = 'cloud' | 'local';
+export type ModelCapability = 'reasoning' | 'coding' | 'research' | 'structured-output' | 'private-data';
+
+export interface ProviderProfile {
+  provider: ModelProvider;
+  model: string;
+  capabilities: readonly ModelCapability[];
+  available: boolean;
+  estimatedLatencyMs?: number;
+}
 export type WorkRole = 'planner' | 'coder' | 'reviewer' | 'research' | 'writer';
 export type WorkRisk = 'low' | 'medium' | 'high' | 'prohibited';
 export interface ModelBudget { tokenLimit: number; dailyTokenLimit: number; maximumTaskCostUsd: number; maximumDailyCostUsd: number }
 export interface ModelUsage { taskTokens: number; dailyTokens: number; taskCloudCostUsd: number; dailyCloudCostUsd: number }
 export interface RouteInput { role: WorkRole; risk: WorkRisk; privacySensitive: boolean; complexity: 'simple' | 'complex'; estimatedTokens: number; cloudRatePerMillionUsd: number; cloudAvailable: boolean; localAvailable: boolean; localFirst?: boolean; cloudModel: string; localModel: string; budget: ModelBudget; usage: ModelUsage }
 export interface RouteDecision { allowed: boolean; provider?: ModelProvider; model?: string; reason: string; projectedTaskTokens: number; projectedDailyTokens: number; projectedTaskCostUsd: number; projectedDailyCostUsd: number }
+export function selectProvider(providers: readonly ProviderProfile[], required: readonly ModelCapability[], privacySensitive: boolean): ProviderProfile | undefined { return providers.filter((candidate) => candidate.available && required.every((capability) => candidate.capabilities.includes(capability)) && (!privacySensitive || candidate.capabilities.includes('private-data'))).sort((a, b) => (a.estimatedLatencyMs ?? Number.MAX_SAFE_INTEGER) - (b.estimatedLatencyMs ?? Number.MAX_SAFE_INTEGER))[0]; }
 const safe = (value: number) => Number.isFinite(value) && value >= 0 ? value : 0;
 export function utcDayStart(now: Date): Date { return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())); }
 export function routeModel(input: RouteInput): RouteDecision {

@@ -1,6 +1,9 @@
 export type ModelRole = 'planner' | 'coder' | 'reviewer' | 'researcher' | 'summarizer' | 'embedding' | 'classifier';
+import { createHash } from 'node:crypto';
+export interface ModelGenerationEvidence { correlationId?: string; provider: string; model: string; role: ModelRole; promptHash: string; status: 'success' | 'failed'; inputTokens?: number; outputTokens?: number; estimatedCostUsd?: number; latencyMs?: number; fallbackCount?: number; errorCode?: string }
 export interface ModelRequest { role: ModelRole; input: string; maxOutputTokens?: number; correlationId?: string; responseFormat?: 'text' | 'json' }
 export interface ModelResult { provider: string; model: string; text: string; inputTokens?: number; outputTokens?: number; estimatedCostUsd?: number; latencyMs?: number; fallbackCount?: number }
+export function buildModelGenerationEvidence(request: ModelRequest, result: Pick<ModelResult, 'provider'|'model'|'inputTokens'|'outputTokens'|'estimatedCostUsd'|'latencyMs'|'fallbackCount'>, status: ModelGenerationEvidence['status'] = 'success', errorCode?: string): ModelGenerationEvidence { return { correlationId: request.correlationId, provider: result.provider, model: result.model, role: request.role, promptHash: createHash('sha256').update(request.input).digest('hex'), status, inputTokens: result.inputTokens, outputTokens: result.outputTokens, estimatedCostUsd: result.estimatedCostUsd, latencyMs: result.latencyMs, fallbackCount: result.fallbackCount, errorCode }; }
 export interface ModelClient { generate(request: ModelRequest): Promise<ModelResult> }
 export interface LiteLLMClientOptions { baseUrl: string; apiKey: string; models: Partial<Record<ModelRole, string>>; timeoutMs?: number; fetch?: typeof fetch; ratesPerMillionUsd?: Partial<Record<string, { input: number; output: number }>> }
 

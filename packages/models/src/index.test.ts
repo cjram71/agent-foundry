@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { LiteLLMClient, RollbackModelClient, isTransientModelError, type ModelClient } from './index';
+import { LiteLLMClient, RollbackModelClient, buildModelGenerationEvidence, isTransientModelError, type ModelClient } from './index';
 
 test('LiteLLM client sends an authenticated role-pinned request and accounts usage', async () => {
   let auth = '', body = '';
@@ -20,3 +20,4 @@ test('rollback occurs only on classified transient failures', async () => {
   const permanent: ModelClient={generate:async()=>{throw new Error('invalid request')}};
   await assert.rejects(new RollbackModelClient(permanent,rollback,isTransientModelError).generate({role:'planner',input:'x'}),/invalid request/);
 });
+test('generation evidence hashes prompts and excludes prompt/output payloads',()=>{const evidence=buildModelGenerationEvidence({role:'planner',input:'secret prompt',correlationId:'corr-1'},{provider:'litellm',model:'planner-v1',inputTokens:3,outputTokens:2,estimatedCostUsd:0.01,latencyMs:12},'success');assert.equal(evidence.correlationId,'corr-1');assert.equal(evidence.promptHash.length,64);assert.equal('text' in evidence,false);assert.equal('input' in evidence,false);});

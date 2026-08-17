@@ -37,6 +37,8 @@ const sections = [
   [
     "SETTINGS",
     [
+      ["/composio", "Composio connections"],
+      ["/command-center", "Command Boosta"],
       ["/businesses", "Company identity & rules"],
       ["/intelligence/skills", "Skills"],
       ["/intelligence/workflows", "Workflows"],

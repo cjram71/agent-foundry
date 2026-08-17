@@ -371,60 +371,60 @@ model OpportunityDecision {
 }
 
 model Company {
-  id                 String                @id
-  legalName          String
-  displayName        String
-  organizationNumber String                @unique
-  jurisdiction       String                @default("SE")
-  legalForm          String
-  status             String                @default("ACTIVE")
-  primaryLanguage    String                @default("sv")
-  reportingCurrency  String                @default("SEK")
-  operatingModel     String                @default("OWNER_OPERATED")
-  employeeCount      Int?
-  shareCapitalMinor  BigInt?
-  registeredAddress  Json?
-  postalAddress      Json?
-  registeredSeat     Json?
-  registrations      Json?
-  managingDirector   String?
-  description        String
-  sourceStatus       String                @default("OWNER_CONFIRMED")
-  createdAt          DateTime              @default(now())
-  updatedAt          DateTime              @updatedAt
-  activities         CompanyActivity[]
-  sources            CompanySource[]
-  facts              CompanyFact[]
-  constitutions      CompanyConstitution[]
-  projects           Project[]
-  missions           Mission[]
-  editorialJobs      EditorialJob[]
-  departments        CompanyDepartment[]
-  companyAgents      CompanyAgent[]
-  opportunities      Opportunity[]
-  products           Product[]
-  marketingCampaigns MarketingCampaign[]
-  salesOpportunities SalesOpportunity[]
-  customerAccounts   CustomerAccount[]
-  customerCases      CustomerCase[]
-  businessFeedback   BusinessFeedback[]
-  financeEntries     FinanceLedgerEntry[]
-  cfoReports         CfoReport[]
-  securityFindings   SecurityFinding[]
-  incidents          OperationalIncident[]
-  complianceIssues   ComplianceIssue[]
-  services           ServiceRecord[]
-  standards          StandardRegistry[]
-  controlEvidence    ControlEvidence[]
-  outcomeReviews     OutcomeReview[]
-  lessonsLearned     LessonLearned[]
+  id                   String                @id
+  legalName            String
+  displayName          String
+  organizationNumber   String                @unique
+  jurisdiction         String                @default("SE")
+  legalForm            String
+  status               String                @default("ACTIVE")
+  primaryLanguage      String                @default("sv")
+  reportingCurrency    String                @default("SEK")
+  operatingModel       String                @default("OWNER_OPERATED")
+  employeeCount        Int?
+  shareCapitalMinor    BigInt?
+  registeredAddress    Json?
+  postalAddress        Json?
+  registeredSeat       Json?
+  registrations        Json?
+  managingDirector     String?
+  description          String
+  sourceStatus         String                @default("OWNER_CONFIRMED")
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  activities           CompanyActivity[]
+  sources              CompanySource[]
+  facts                CompanyFact[]
+  constitutions        CompanyConstitution[]
+  projects             Project[]
+  missions             Mission[]
+  editorialJobs        EditorialJob[]
+  departments          CompanyDepartment[]
+  companyAgents        CompanyAgent[]
+  opportunities        Opportunity[]
+  products             Product[]
+  marketingCampaigns   MarketingCampaign[]
+  salesOpportunities   SalesOpportunity[]
+  customerAccounts     CustomerAccount[]
+  customerCases        CustomerCase[]
+  businessFeedback     BusinessFeedback[]
+  financeEntries       FinanceLedgerEntry[]
+  cfoReports           CfoReport[]
+  securityFindings     SecurityFinding[]
+  incidents            OperationalIncident[]
+  complianceIssues     ComplianceIssue[]
+  services             ServiceRecord[]
+  standards            StandardRegistry[]
+  controlEvidence      ControlEvidence[]
+  outcomeReviews       OutcomeReview[]
+  lessonsLearned       LessonLearned[]
   improvementProposals ImprovementProposal[]
   agentRecommendations AgentRecommendation[]
-  worldEntities         WorldEntity[]
-  worldRelations        WorldRelation[]
-  twinScenarios         TwinScenario[]
-  healthSnapshots       HealthSnapshot[]
-  attentionItems        AttentionItem[]
+  worldEntities        WorldEntity[]
+  worldRelations       WorldRelation[]
+  twinScenarios        TwinScenario[]
+  healthSnapshots      HealthSnapshot[]
+  attentionItems       AttentionItem[]
 
   @@index([status])
 }
@@ -1025,84 +1025,84 @@ model AgentRunReport {
 }
 
 model Product {
-  id                String   @id @default(uuid())
-  companyId         String
-  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  projectId         String?
-  project           Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  name              String
-  productType       String
-  lifecycleStage    String   @default("IDEA")
-  description       String
-  owner             String
-  currency          String   @default("SEK")
-  priceMinor        BigInt?
-  launchApprovedBy  String?
-  launchApprovedAt  DateTime?
-  launchedAt        DateTime?
-  createdBy         String
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  qualityGates      ProductQualityGate[]
-  rights             ProductRights[]
-  campaigns         MarketingCampaign[]
-  feedback           BusinessFeedback[]
+  id               String               @id @default(uuid())
+  companyId        String
+  company          Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projectId        String?
+  project          Project?             @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  name             String
+  productType      String
+  lifecycleStage   String               @default("IDEA")
+  description      String
+  owner            String
+  currency         String               @default("SEK")
+  priceMinor       BigInt?
+  launchApprovedBy String?
+  launchApprovedAt DateTime?
+  launchedAt       DateTime?
+  createdBy        String
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  qualityGates     ProductQualityGate[]
+  rights           ProductRights[]
+  campaigns        MarketingCampaign[]
+  feedback         BusinessFeedback[]
 
   @@index([companyId, lifecycleStage])
   @@index([projectId, lifecycleStage])
 }
 
 model ProductQualityGate {
-  id          String   @id @default(uuid())
-  productId   String
-  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  gate        String
-  status      String   @default("PENDING")
-  evidence    String[]
-  checkedBy   String?
-  checkedAt   DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String    @id @default(uuid())
+  productId String
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  gate      String
+  status    String    @default("PENDING")
+  evidence  String[]
+  checkedBy String?
+  checkedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   @@unique([productId, gate])
   @@index([productId, status])
 }
 
 model ProductRights {
-  id               String   @id @default(uuid())
-  productId        String
-  product          Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  ownership        String
-  authors          String[]
-  version          String
-  formats          String[]
-  territories      String[]
-  licensingTerms   String?
-  royaltyTerms     String?
-  copyrightNotice  String
-  evidence         String[]
-  approvedBy       String?
-  approvedAt       DateTime?
-  createdBy        String
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id              String    @id @default(uuid())
+  productId       String
+  product         Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  ownership       String
+  authors         String[]
+  version         String
+  formats         String[]
+  territories     String[]
+  licensingTerms  String?
+  royaltyTerms    String?
+  copyrightNotice String
+  evidence        String[]
+  approvedBy      String?
+  approvedAt      DateTime?
+  createdBy       String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   @@index([productId, createdAt])
 }
 
 model MarketingCampaign {
-  id                    String   @id @default(uuid())
+  id                    String    @id @default(uuid())
   companyId             String
-  company               Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company               Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   productId             String?
-  product               Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  product               Product?  @relation(fields: [productId], references: [id], onDelete: SetNull)
   name                  String
   objective             String
   audience              String
-  status                String   @default("DRAFT")
-  approvedBudgetMinor   BigInt   @default(0)
-  spentMinor            BigInt   @default(0)
-  currency              String   @default("SEK")
+  status                String    @default("DRAFT")
+  approvedBudgetMinor   BigInt    @default(0)
+  spentMinor            BigInt    @default(0)
+  currency              String    @default("SEK")
   expectedOutcome       String
   actualOutcome         String?
   roiBasisPoints        Int?
@@ -1113,57 +1113,57 @@ model MarketingCampaign {
   publicationApprovedAt DateTime?
   publishedAt           DateTime?
   createdBy             String
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   @@index([companyId, status])
   @@index([productId, status])
 }
 
 model SalesOpportunity {
-  id                  String   @id @default(uuid())
-  companyId           String
-  company             Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  accountName         String
-  stage               String   @default("LEAD")
-  offer               String
-  pricingModel        String
-  valueMinor          BigInt
-  currency            String   @default("SEK")
-  probability         Int      @default(0)
-  forecastCloseAt     DateTime?
-  partnership         Boolean  @default(false)
-  upsell              String?
-  crossSell           String?
-  riskLevel           String   @default("medium")
-  approvalRequired    Boolean  @default(true)
-  approvedBy          String?
-  approvedAt          DateTime?
-  outcome             String?
-  owner               String
-  createdBy           String
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id               String    @id @default(uuid())
+  companyId        String
+  company          Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  accountName      String
+  stage            String    @default("LEAD")
+  offer            String
+  pricingModel     String
+  valueMinor       BigInt
+  currency         String    @default("SEK")
+  probability      Int       @default(0)
+  forecastCloseAt  DateTime?
+  partnership      Boolean   @default(false)
+  upsell           String?
+  crossSell        String?
+  riskLevel        String    @default("medium")
+  approvalRequired Boolean   @default(true)
+  approvedBy       String?
+  approvedAt       DateTime?
+  outcome          String?
+  owner            String
+  createdBy        String
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   @@index([companyId, stage])
   @@index([forecastCloseAt])
 }
 
 model CustomerAccount {
-  id                 String   @id @default(uuid())
+  id                 String             @id @default(uuid())
   companyId          String
-  company            Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company            Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
   accountName        String
-  externalReference String?  @unique
-  status             String   @default("ONBOARDING")
-  dataClassification String   @default("CONFIDENTIAL")
+  externalReference  String?            @unique
+  status             String             @default("ONBOARDING")
+  dataClassification String             @default("CONFIDENTIAL")
   healthScore        Int?
-  churnRisk          String   @default("UNKNOWN")
+  churnRisk          String             @default("UNKNOWN")
   retentionPlan      String?
   owner              String
   createdBy          String
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
   cases              CustomerCase[]
   feedback           BusinessFeedback[]
 
@@ -1217,28 +1217,28 @@ model BusinessFeedback {
 }
 
 model FinanceLedgerEntry {
-  id                    String   @id @default(uuid())
-  companyId             String
-  company               Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  entryType             String
-  amountMinor           BigInt
-  currency              String   @default("SEK")
-  category              String
-  department            String?
-  agentId               String?
-  model                 String?
-  taskId                String?
-  projectId             String?
-  customerId            String?
-  productId             String?
-  providerInvoiceRef    String?
-  providerUsageRef      String?
-  reconciliationStatus  String   @default("UNRECONCILED")
-  evidence              Json?
-  idempotencyKey        String   @unique
-  occurredAt            DateTime
-  recordedBy            String
-  createdAt             DateTime @default(now())
+  id                   String   @id @default(uuid())
+  companyId            String
+  company              Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  entryType            String
+  amountMinor          BigInt
+  currency             String   @default("SEK")
+  category             String
+  department           String?
+  agentId              String?
+  model                String?
+  taskId               String?
+  projectId            String?
+  customerId           String?
+  productId            String?
+  providerInvoiceRef   String?
+  providerUsageRef     String?
+  reconciliationStatus String   @default("UNRECONCILED")
+  evidence             Json?
+  idempotencyKey       String   @unique
+  occurredAt           DateTime
+  recordedBy           String
+  createdAt            DateTime @default(now())
 
   @@index([companyId, occurredAt])
   @@index([projectId, occurredAt])
@@ -1247,94 +1247,94 @@ model FinanceLedgerEntry {
 }
 
 model CfoReport {
-  id           String   @id @default(uuid())
-  companyId    String
-  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  period       String
-  periodStart  DateTime
-  periodEnd    DateTime
-  metrics      Json
-  forecast     Json
-  risks        String[]
-  generatedBy  String
-  approvedBy   String?
-  approvedAt   DateTime?
-  createdAt    DateTime @default(now())
+  id          String    @id @default(uuid())
+  companyId   String
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  period      String
+  periodStart DateTime
+  periodEnd   DateTime
+  metrics     Json
+  forecast    Json
+  risks       String[]
+  generatedBy String
+  approvedBy  String?
+  approvedAt  DateTime?
+  createdAt   DateTime  @default(now())
 
   @@unique([companyId, period, periodStart, periodEnd])
   @@index([companyId, periodEnd])
 }
 
 model SecurityFinding {
-  id           String   @id @default(uuid())
-  companyId    String
-  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  domain       String
-  severity     String
-  status       String   @default("OPEN")
-  title        String
-  description  String
-  evidence     String[]
-  owner        String
-  dueAt        DateTime?
-  resolvedAt   DateTime?
-  createdBy    String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id          String    @id @default(uuid())
+  companyId   String
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  domain      String
+  severity    String
+  status      String    @default("OPEN")
+  title       String
+  description String
+  evidence    String[]
+  owner       String
+  dueAt       DateTime?
+  resolvedAt  DateTime?
+  createdBy   String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@index([companyId, severity, status])
 }
 
 model OperationalIncident {
-  id              String   @id @default(uuid())
-  companyId       String
-  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  severity        String
-  status          String   @default("DETECTED")
-  title           String
-  detectedAt      DateTime @default(now())
-  containedAt     DateTime?
-  investigatedAt  DateTime?
-  recoveredAt     DateTime?
-  validatedAt     DateTime?
-  reportedAt      DateTime?
-  escalationAt    DateTime?
-  rootCause       String?
+  id               String    @id @default(uuid())
+  companyId        String
+  company          Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  severity         String
+  status           String    @default("DETECTED")
+  title            String
+  detectedAt       DateTime  @default(now())
+  containedAt      DateTime?
+  investigatedAt   DateTime?
+  recoveredAt      DateTime?
+  validatedAt      DateTime?
+  reportedAt       DateTime?
+  escalationAt     DateTime?
+  rootCause        String?
   correctiveAction String?
-  lessons         String[]
-  evidence        String[]
-  owner           String
-  createdBy       String
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  lessons          String[]
+  evidence         String[]
+  owner            String
+  createdBy        String
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   @@index([companyId, severity, status])
 }
 
 model ComplianceIssue {
-  id                     String   @id @default(uuid())
-  companyId              String
-  company                Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  framework              String
-  obligation             String
-  readinessStatus        String   @default("NOT_ASSESSED")
-  legalInformation       String
-  professionalAdviceNeeded Boolean @default(false)
-  professionalEscalation String?
-  owner                  String
-  evidence               String[]
-  dueAt                  DateTime?
-  createdBy              String
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  id                       String    @id @default(uuid())
+  companyId                String
+  company                  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  framework                String
+  obligation               String
+  readinessStatus          String    @default("NOT_ASSESSED")
+  legalInformation         String
+  professionalAdviceNeeded Boolean   @default(false)
+  professionalEscalation   String?
+  owner                    String
+  evidence                 String[]
+  dueAt                    DateTime?
+  createdBy                String
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
 
   @@index([companyId, framework, readinessStatus])
 }
 
 model ServiceRecord {
-  id                 String   @id @default(uuid())
+  id                 String         @id @default(uuid())
   companyId          String
-  company            Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company            Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
   name               String
   owner              String
   customers          String[]
@@ -1349,10 +1349,10 @@ model ServiceRecord {
   continuityPlan     String
   lastReviewAt       DateTime?
   nextReviewAt       DateTime
-  status             String   @default("ACTIVE")
+  status             String         @default("ACTIVE")
   createdBy          String
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
   events             ServiceEvent[]
 
   @@unique([companyId, name])
@@ -1360,43 +1360,43 @@ model ServiceRecord {
 }
 
 model ServiceEvent {
-  id          String        @id @default(uuid())
-  serviceId   String
-  service     ServiceRecord @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-  eventType   String
-  status      String
-  summary     String
-  evidence    String[]
-  approvedBy  String?
-  approvedAt  DateTime?
-  occurredAt  DateTime      @default(now())
-  createdBy   String
-  createdAt   DateTime      @default(now())
+  id         String        @id @default(uuid())
+  serviceId  String
+  service    ServiceRecord @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  eventType  String
+  status     String
+  summary    String
+  evidence   String[]
+  approvedBy String?
+  approvedAt DateTime?
+  occurredAt DateTime      @default(now())
+  createdBy  String
+  createdAt  DateTime      @default(now())
 
   @@index([serviceId, eventType, occurredAt])
 }
 
 model StandardRegistry {
-  id                    String   @id @default(uuid())
-  companyId             String
-  company               Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  framework             String
-  edition               String
-  editionVerifiedAt     DateTime?
-  scope                 String
-  departments           String[]
-  controls              Json
-  process               String
-  owner                 String
-  testFrequencyDays     Int
-  exceptions            String[]
-  correctiveActions     String[]
-  nextReviewAt          DateTime
-  status                String   @default("DRAFT")
-  createdBy             String
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-  evidence              ControlEvidence[]
+  id                String            @id @default(uuid())
+  companyId         String
+  company           Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  framework         String
+  edition           String
+  editionVerifiedAt DateTime?
+  scope             String
+  departments       String[]
+  controls          Json
+  process           String
+  owner             String
+  testFrequencyDays Int
+  exceptions        String[]
+  correctiveActions String[]
+  nextReviewAt      DateTime
+  status            String            @default("DRAFT")
+  createdBy         String
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  evidence          ControlEvidence[]
 
   @@unique([companyId, framework, edition])
   @@index([companyId, status, nextReviewAt])
@@ -1420,60 +1420,60 @@ model ControlEvidence {
   expiresAt        DateTime
   reviewAt         DateTime
   createdBy        String
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
   @@unique([standardId, controlKey, testedAt])
   @@index([companyId, result, expiresAt])
 }
 
 model OutcomeReview {
-  id               String   @id @default(uuid())
-  companyId        String
-  company          Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  projectId        String
-  expected         Json
-  actual           Json
-  dimensions       String[]
-  evidenceRefs     String[]
-  reviewedBy       String
-  reviewedAt       DateTime @default(now())
-  createdAt        DateTime @default(now())
-  lessons          LessonLearned[]
+  id           String          @id @default(uuid())
+  companyId    String
+  company      Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projectId    String
+  expected     Json
+  actual       Json
+  dimensions   String[]
+  evidenceRefs String[]
+  reviewedBy   String
+  reviewedAt   DateTime        @default(now())
+  createdAt    DateTime        @default(now())
+  lessons      LessonLearned[]
 
   @@index([companyId, projectId, reviewedAt])
 }
 
 model LessonLearned {
-  id             String        @id @default(uuid())
-  companyId      String
-  company        Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  id              String                @id @default(uuid())
+  companyId       String
+  company         Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
   outcomeReviewId String
-  outcomeReview  OutcomeReview @relation(fields: [outcomeReviewId], references: [id], onDelete: Cascade)
-  summary        String
-  provenance     String
-  evidenceRefs   String[]
-  confidence     Float
-  createdBy      String
-  createdAt      DateTime      @default(now())
-  proposals      ImprovementProposal[]
+  outcomeReview   OutcomeReview         @relation(fields: [outcomeReviewId], references: [id], onDelete: Cascade)
+  summary         String
+  provenance      String
+  evidenceRefs    String[]
+  confidence      Float
+  createdBy       String
+  createdAt       DateTime              @default(now())
+  proposals       ImprovementProposal[]
 
   @@index([companyId, createdAt])
 }
 
 model ImprovementProposal {
-  id             String         @id @default(uuid())
+  id             String        @id @default(uuid())
   companyId      String
-  company        Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company        Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   lessonId       String
-  lesson         LessonLearned  @relation(fields: [lessonId], references: [id], onDelete: Restrict)
+  lesson         LessonLearned @relation(fields: [lessonId], references: [id], onDelete: Restrict)
   targetType     String
   targetId       String?
   proposedChange String
   rationale      String
-  status         String         @default("PENDING_APPROVAL")
+  status         String        @default("PENDING_APPROVAL")
   requestedBy    String
-  requestedAt    DateTime       @default(now())
+  requestedAt    DateTime      @default(now())
   decidedBy      String?
   decidedAt      DateTime?
   decisionNotes  String?
@@ -1482,46 +1482,46 @@ model ImprovementProposal {
 }
 
 model AgentRecommendation {
-  id             String   @id @default(uuid())
-  companyId      String
-  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  agentId        String
-  action         String
-  metrics        Json
-  evidenceRefs   String[]
-  rationale      String
-  status         String   @default("PENDING_APPROVAL")
-  expiresAt      DateTime?
-  requestedBy    String
-  requestedAt    DateTime @default(now())
-  decidedBy      String?
-  decidedAt      DateTime?
+  id           String    @id @default(uuid())
+  companyId    String
+  company      Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  agentId      String
+  action       String
+  metrics      Json
+  evidenceRefs String[]
+  rationale    String
+  status       String    @default("PENDING_APPROVAL")
+  expiresAt    DateTime?
+  requestedBy  String
+  requestedAt  DateTime  @default(now())
+  decidedBy    String?
+  decidedAt    DateTime?
 
   @@index([companyId, agentId, status])
   @@index([expiresAt, status])
 }
 
 model WorldEntity {
-  id                 String   @id @default(uuid())
-  companyId          String
-  company            Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  entityType         String
-  name               String
-  canonicalKey       String
-  attributes         Json
-  sourceReference    String
-  sourceAuthority    String
-  validationStatus   String   @default("PROPOSED")
-  confidence         Float    @default(0)
-  classification     String   @default("INTERNAL")
-  validFrom          DateTime?
-  validUntil         DateTime?
-  createdBy          String
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-  outgoing           WorldRelation[] @relation("WorldRelationFrom")
-  incoming           WorldRelation[] @relation("WorldRelationTo")
-  scenarioChanges    TwinScenarioChange[]
+  id               String               @id @default(uuid())
+  companyId        String
+  company          Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  entityType       String
+  name             String
+  canonicalKey     String
+  attributes       Json
+  sourceReference  String
+  sourceAuthority  String
+  validationStatus String               @default("PROPOSED")
+  confidence       Float                @default(0)
+  classification   String               @default("INTERNAL")
+  validFrom        DateTime?
+  validUntil       DateTime?
+  createdBy        String
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  outgoing         WorldRelation[]      @relation("WorldRelationFrom")
+  incoming         WorldRelation[]      @relation("WorldRelationTo")
+  scenarioChanges  TwinScenarioChange[]
 
   @@unique([companyId, canonicalKey])
   @@index([companyId, entityType, validationStatus])
@@ -1549,37 +1549,37 @@ model WorldRelation {
 }
 
 model TwinScenario {
-  id             String               @id @default(uuid())
-  companyId      String
-  company        Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  name           String
-  description    String
-  status         String               @default("DRAFT")
-  baselineAt     DateTime?
-  horizonDays    Int                  @default(90)
-  assumptions    Json
-  createdBy      String
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
-  changes        TwinScenarioChange[]
-  result         TwinScenarioResult?
+  id          String               @id @default(uuid())
+  companyId   String
+  company     Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name        String
+  description String
+  status      String               @default("DRAFT")
+  baselineAt  DateTime?
+  horizonDays Int                  @default(90)
+  assumptions Json
+  createdBy   String
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  changes     TwinScenarioChange[]
+  result      TwinScenarioResult?
 
   @@index([companyId, status, createdAt])
 }
 
 model TwinScenarioChange {
-  id              String        @id @default(uuid())
+  id              String       @id @default(uuid())
   scenarioId      String
-  scenario        TwinScenario  @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  scenario        TwinScenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
   entityId        String?
-  entity          WorldEntity?  @relation(fields: [entityId], references: [id], onDelete: SetNull)
+  entity          WorldEntity? @relation(fields: [entityId], references: [id], onDelete: SetNull)
   entityType      String
   action          String
   patch           Json
   rationale       String
   sourceReference String
   createdBy       String
-  createdAt       DateTime      @default(now())
+  createdAt       DateTime     @default(now())
 
   @@index([scenarioId, createdAt])
   @@index([entityId])
@@ -1618,9 +1618,9 @@ model HealthSnapshot {
 }
 
 model AttentionItem {
-  id                     String   @id @default(uuid())
+  id                     String    @id @default(uuid())
   companyId              String
-  company                Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company                Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   title                  String
   category               String
   valueScore             Float
@@ -1628,12 +1628,358 @@ model AttentionItem {
   impactScore            Float
   estimatedReviewMinutes Int
   priorityScore          Float
-  status                 String   @default("OPEN")
+  status                 String    @default("OPEN")
   sourceRefs             String[]
   dueAt                  DateTime?
   createdBy              String
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
   @@index([companyId, status, priorityScore])
+}
+
+model BoostaWorkspace {
+  id                  String                         @id @default(uuid())
+  companyId           String                         @unique
+  name                String
+  slug                String                         @unique
+  status              String                         @default("ACTIVE")
+  brainSummary        String
+  createdBy           String
+  createdAt           DateTime                       @default(now())
+  updatedAt           DateTime                       @updatedAt
+  brainVersions       BoostaBrainVersion[]
+  authors             BoostaAuthor[]
+  books               BoostaBook[]
+  roles               BoostaAgentRole[]
+  artifacts           BoostaArtifact[]
+  reviews             BoostaReview[]
+  approvals           BoostaWorkflowApproval[]
+  submissions         BoostaDistributionSubmission[]
+  subscribers         BoostaEmailSubscriber[]
+  campaigns           BoostaEmailCampaign[]
+  funnelEvents        BoostaFunnelEvent[]
+  experiments         BoostaMarketingExperiment[]
+  offers              BoostaOffer[]
+  opportunities       BoostaB2BOpportunity[]
+  weeklyReviews       BoostaWeeklyReview[]
+  revenueAttributions BoostaRevenueAttribution[]
+
+  @@index([companyId, status])
+}
+
+model BoostaBrainVersion {
+  id          String          @id @default(uuid())
+  workspaceId String
+  workspace   BoostaWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  version     Int
+  status      String          @default("DRAFT")
+  content     Json
+  source      String
+  createdBy   String
+  createdAt   DateTime        @default(now())
+
+  @@unique([workspaceId, version])
+  @@index([workspaceId, status])
+}
+
+model BoostaAuthor {
+  id                 String          @id @default(uuid())
+  workspaceId        String
+  workspace          BoostaWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name               String
+  biography          String
+  website            String?
+  verificationStatus String          @default("NEEDS_VERIFICATION")
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  books              BoostaBook[]
+
+  @@unique([workspaceId, name])
+}
+
+model BoostaBook {
+  id              String                         @id @default(uuid())
+  workspaceId     String
+  workspace       BoostaWorkspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  productId       String?
+  authorId        String?
+  author          BoostaAuthor?                  @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  title           String
+  isbn            String?
+  format          String?
+  pageCount       Int?
+  publicationDate DateTime?
+  language        String                         @default("sv")
+  categories      String[]
+  keywords        String[]
+  metadataStatus  String                         @default("NEEDS_VERIFICATION")
+  priceMinor      BigInt?
+  currency        String                         @default("SEK")
+  createdAt       DateTime                       @default(now())
+  updatedAt       DateTime                       @updatedAt
+  submissions     BoostaDistributionSubmission[]
+
+  @@unique([workspaceId, title])
+  @@index([workspaceId, metadataStatus])
+}
+
+model BoostaAgentRole {
+  id                    String          @id @default(uuid())
+  workspaceId           String
+  workspace             BoostaWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  key                   String
+  name                  String
+  role                  String
+  allowedTools          String[]
+  expectedInputs        String[]
+  expectedOutputs       String[]
+  qualityStandards      String[]
+  humanApprovalRequired Boolean         @default(true)
+  status                String          @default("ACTIVE")
+  createdAt             DateTime        @default(now())
+
+  @@unique([workspaceId, key])
+}
+
+model BoostaArtifact {
+  id           String                   @id @default(uuid())
+  workspaceId  String
+  workspace    BoostaWorkspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  missionId    String?
+  projectId    String?
+  taskId       String?
+  agentRunId   String?
+  title        String
+  artifactType String
+  status       String                   @default("DRAFT")
+  content      Json
+  source       String
+  createdBy    String
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
+  reviews      BoostaReview[]
+  approvals    BoostaWorkflowApproval[]
+
+  @@index([workspaceId, status, createdAt])
+  @@index([missionId, projectId, taskId])
+}
+
+model BoostaReview {
+  id          String          @id @default(uuid())
+  workspaceId String
+  workspace   BoostaWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  artifactId  String
+  artifact    BoostaArtifact  @relation(fields: [artifactId], references: [id], onDelete: Cascade)
+  reviewer    String
+  decision    String          @default("PENDING")
+  notes       String?
+  evidence    Json?
+  createdAt   DateTime        @default(now())
+  decidedAt   DateTime?
+
+  @@index([workspaceId, decision])
+}
+
+model BoostaWorkflowApproval {
+  id           String          @id @default(uuid())
+  workspaceId  String
+  workspace    BoostaWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  artifactId   String?
+  artifact     BoostaArtifact? @relation(fields: [artifactId], references: [id], onDelete: SetNull)
+  taskId       String?
+  approvalType String
+  decision     String          @default("PENDING")
+  requestedBy  String
+  decidedBy    String?
+  comments     String?
+  requestedAt  DateTime        @default(now())
+  decidedAt    DateTime?
+
+  @@index([workspaceId, decision])
+}
+
+model BoostaDistributionSubmission {
+  id          String          @id @default(uuid())
+  workspaceId String
+  workspace   BoostaWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  bookId      String
+  book        BoostaBook      @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  retailer    String
+  status      String          @default("NOT_STARTED")
+  checklist   Json
+  response    String?
+  followUpAt  DateTime?
+  submittedAt DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@unique([bookId, retailer])
+  @@index([workspaceId, status])
+}
+
+model BoostaEmailSubscriber {
+  id             String          @id @default(uuid())
+  workspaceId    String
+  workspace      BoostaWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  email          String
+  consentStatus  String          @default("PENDING")
+  consentAt      DateTime?
+  unsubscribedAt DateTime?
+  source         String
+  bookInterest   String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@unique([workspaceId, email])
+  @@index([workspaceId, consentStatus])
+}
+
+model BoostaEmailCampaign {
+  id                     String          @id @default(uuid())
+  workspaceId            String
+  workspace              BoostaWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name                   String
+  bookId                 String?
+  status                 String          @default("DRAFT")
+  consentRequired        Boolean         @default(true)
+  sequence               Json
+  attributedRevenueMinor BigInt          @default(0)
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+
+  @@index([workspaceId, status])
+}
+
+model BoostaFunnelEvent {
+  id          String          @id @default(uuid())
+  workspaceId String
+  workspace   BoostaWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  eventType   String
+  sessionId   String?
+  email       String?
+  bookId      String?
+  campaign    String?
+  source      String?
+  valueMinor  BigInt?
+  occurredAt  DateTime        @default(now())
+  metadata    Json?
+
+  @@index([workspaceId, eventType, occurredAt])
+}
+
+model BoostaMarketingExperiment {
+  id               String          @id @default(uuid())
+  workspaceId      String
+  workspace        BoostaWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  bookId           String?
+  name             String
+  channel          String
+  audience         String
+  variants         Json
+  dailyBudgetMinor BigInt          @default(0)
+  totalBudgetMinor BigInt          @default(0)
+  durationDays     Int             @default(0)
+  killCriteria     String[]
+  scaleCriteria    String[]
+  status           String          @default("DRAFT")
+  approvedBy       String?
+  approvedAt       DateTime?
+  spendMinor       BigInt          @default(0)
+  results          Json?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@index([workspaceId, status])
+}
+
+model BoostaOffer {
+  id               String          @id @default(uuid())
+  workspaceId      String
+  workspace        BoostaWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  bookId           String?
+  name             String
+  offerType        String
+  priceMinor       BigInt?
+  currency         String          @default("SEK")
+  status           String          @default("DRAFT")
+  approvalRequired Boolean         @default(true)
+  approvedBy       String?
+  approvedAt       DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@index([workspaceId, status])
+}
+
+model BoostaB2BOpportunity {
+  id               String          @id @default(uuid())
+  workspaceId      String
+  workspace        BoostaWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  organization     String
+  contact          String?
+  stage            String          @default("LEAD")
+  offer            String
+  copies           Int?
+  valueMinor       BigInt?
+  expectedCloseAt  DateTime?
+  proposal         Json?
+  paymentStatus    String          @default("UNPAID")
+  approvalRequired Boolean         @default(true)
+  owner            String
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@index([workspaceId, stage])
+}
+
+model BoostaWeeklyReview {
+  id               String          @id @default(uuid())
+  workspaceId      String
+  workspace        BoostaWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  weekStart        DateTime
+  sales            Int             @default(0)
+  revenueMinor     BigInt          @default(0)
+  traffic          Int             @default(0)
+  checkoutStarts   Int             @default(0)
+  emailSignups     Int             @default(0)
+  adSpendMinor     BigInt          @default(0)
+  adResults        Json?
+  retailerProgress Json?
+  observations     String?
+  reviewerOutput   Json?
+  brainChanges     Json?
+  status           String          @default("DRAFT")
+  createdBy        String
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@unique([workspaceId, weekStart])
+  @@index([workspaceId, status])
+}
+
+model BoostaRevenueAttribution {
+  id                 String          @id @default(uuid())
+  workspaceId        String
+  workspace          BoostaWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  economicEventId    String?
+  productId          String?
+  offerId            String?
+  channel            String?
+  campaign           String?
+  landingPage        String?
+  emailCampaignId    String?
+  grossMinor         BigInt
+  discountMinor      BigInt          @default(0)
+  refundMinor        BigInt          @default(0)
+  estimatedCostMinor BigInt          @default(0)
+  netMinor           BigInt
+  currency           String          @default("SEK")
+  paymentStatus      String          @default("UNCONFIRMED")
+  occurredAt         DateTime        @default(now())
+  source             String
+  createdAt          DateTime        @default(now())
+
+  @@index([workspaceId, occurredAt])
+  @@index([workspaceId, paymentStatus])
 }
