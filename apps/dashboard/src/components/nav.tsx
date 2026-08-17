@@ -37,6 +37,7 @@ const sections = [
   [
     "SETTINGS",
     [
+      ["/composio", "Composio connections"],
       ["/businesses", "Company identity & rules"],
       ["/intelligence/skills", "Skills"],
       ["/intelligence/workflows", "Workflows"],
