@@ -10,6 +10,7 @@ const sections = [
       ["/ceo", "AI CEO"],
       ["/approvals", "My decisions"],
       ["/opportunities", "Opportunities"],
+      ["/crm", "CRM department"],
       ["/projects", "Workspaces"],
       ["/project-governance", "Project governance"],
       ["/business-delivery", "Business delivery"],

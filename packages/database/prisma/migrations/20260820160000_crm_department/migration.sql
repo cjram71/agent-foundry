@@ -1,0 +1,26 @@
+CREATE TABLE "CrmContact" (
+  "id" TEXT NOT NULL, "companyId" TEXT NOT NULL, "customerAccountId" TEXT, "firstName" TEXT NOT NULL, "lastName" TEXT NOT NULL, "email" TEXT, "title" TEXT, "lifecycleStage" TEXT NOT NULL DEFAULT 'LEAD', "source" TEXT NOT NULL DEFAULT 'HUMAN_ENTERED', "consentStatus" TEXT NOT NULL DEFAULT 'UNKNOWN', "dataClassification" TEXT NOT NULL DEFAULT 'CONFIDENTIAL', "owner" TEXT NOT NULL, "createdBy" TEXT NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL, CONSTRAINT "CrmContact_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE "CrmActivity" (
+  "id" TEXT NOT NULL, "companyId" TEXT NOT NULL, "contactId" TEXT NOT NULL, "type" TEXT NOT NULL, "summary" TEXT NOT NULL, "occurredAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "source" TEXT NOT NULL DEFAULT 'HUMAN_ENTERED', "agentId" TEXT, "createdBy" TEXT NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "CrmActivity_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE "CrmAgentTask" (
+  "id" TEXT NOT NULL, "companyId" TEXT NOT NULL, "contactId" TEXT, "agentId" TEXT NOT NULL, "taskType" TEXT NOT NULL, "instruction" TEXT NOT NULL, "status" TEXT NOT NULL DEFAULT 'DRAFT', "requiresApproval" BOOLEAN NOT NULL DEFAULT true, "approvedBy" TEXT, "approvedAt" TIMESTAMP(3), "completedAt" TIMESTAMP(3), "createdBy" TEXT NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL, CONSTRAINT "CrmAgentTask_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX "CrmContact_companyId_email_key" ON "CrmContact"("companyId", "email");
+CREATE INDEX "CrmContact_companyId_lifecycleStage_idx" ON "CrmContact"("companyId", "lifecycleStage");
+CREATE INDEX "CrmContact_customerAccountId_idx" ON "CrmContact"("customerAccountId");
+CREATE INDEX "CrmActivity_companyId_occurredAt_idx" ON "CrmActivity"("companyId", "occurredAt");
+CREATE INDEX "CrmActivity_contactId_occurredAt_idx" ON "CrmActivity"("contactId", "occurredAt");
+CREATE INDEX "CrmAgentTask_companyId_status_idx" ON "CrmAgentTask"("companyId", "status");
+CREATE INDEX "CrmAgentTask_contactId_status_idx" ON "CrmAgentTask"("contactId", "status");
+ALTER TABLE "CrmContact" ADD CONSTRAINT "CrmContact_companyId_fkey" FOREIGN KEY ("companyId") REFERENCES "Company"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "CrmContact" ADD CONSTRAINT "CrmContact_customerAccountId_fkey" FOREIGN KEY ("customerAccountId") REFERENCES "CustomerAccount"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "CrmActivity" ADD CONSTRAINT "CrmActivity_companyId_fkey" FOREIGN KEY ("companyId") REFERENCES "Company"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "CrmActivity" ADD CONSTRAINT "CrmActivity_contactId_fkey" FOREIGN KEY ("contactId") REFERENCES "CrmContact"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "CrmAgentTask" ADD CONSTRAINT "CrmAgentTask_companyId_fkey" FOREIGN KEY ("companyId") REFERENCES "Company"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "CrmAgentTask" ADD CONSTRAINT "CrmAgentTask_contactId_fkey" FOREIGN KEY ("contactId") REFERENCES "CrmContact"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+INSERT INTO "CompanyDepartment" ("id", "companyId", "code", "name", "purpose", "executiveRole", "status", "authorityLevel", "budgetLimitMinor", "updatedAt") VALUES ('BSTA-DEPT-CRM', 'BSTA-COMP-001', 'CRM', 'Customer relationship management', 'Maintain evidence-backed relationship records and prepare human-approved follow-up work.', 'CRM Director', 'ACTIVE', 'ADVISORY', 0, CURRENT_TIMESTAMP) ON CONFLICT ("companyId", "code") DO NOTHING;
+INSERT INTO "CompanyAgent" ("id", "companyId", "departmentId", "name", "role", "purpose", "responsibilities", "capabilities", "permissions", "tools", "dataAccess", "financialLimitMinor", "externalActionLimit", "riskLevel", "model", "status", "createdBy", "updatedAt") VALUES
+('BSTA-CRM-001', 'BSTA-COMP-001', 'BSTA-DEPT-CRM', 'CRM Research Analyst', 'Relationship research analyst', 'Prepare internal relationship briefs from CRM records only.', ARRAY['Summarize approved CRM records', 'Identify missing evidence', 'Draft follow-up recommendations'], '{"network":false,"database":"scoped","execution":"supervised"}', '{"read":"crm-scoped","write":"draft-only","externalActions":false}', ARRAY['crm.read','crm.task.draft'], '{"classification":"CONFIDENTIAL","scope":"CRM_ONLY","secrets":false}', 0, '{"email":false,"calendar":false,"web":false,"payments":false}', 'medium', 'existing-runner', 'STAGING', 'system-bootstrap', CURRENT_TIMESTAMP),
+('BSTA-CRM-002', 'BSTA-COMP-001', 'BSTA-DEPT-CRM', 'CRM Follow-up Planner', 'Follow-up planning agent', 'Turn approved relationship evidence into human-reviewed follow-up plans.', ARRAY['Draft follow-up plans', 'Queue approval-required internal tasks', 'Never send or schedule externally'], '{"network":false,"database":"scoped","execution":"supervised"}', '{"read":"crm-scoped","write":"draft-only","externalActions":false}', ARRAY['crm.read','crm.task.draft'], '{"classification":"CONFIDENTIAL","scope":"CRM_ONLY","secrets":false}', 0, '{"email":false,"calendar":false,"web":false,"payments":false}', 'medium', 'existing-runner', 'STAGING', 'system-bootstrap', CURRENT_TIMESTAMP) ON CONFLICT ("id") DO NOTHING;
