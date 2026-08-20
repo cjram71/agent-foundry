@@ -406,6 +406,9 @@ model Company {
   marketingCampaigns   MarketingCampaign[]
   salesOpportunities   SalesOpportunity[]
   customerAccounts     CustomerAccount[]
+  crmContacts          CrmContact[]
+  crmActivities        CrmActivity[]
+  crmAgentTasks        CrmAgentTask[]
   customerCases        CustomerCase[]
   businessFeedback     BusinessFeedback[]
   financeEntries       FinanceLedgerEntry[]
@@ -1166,9 +1169,78 @@ model CustomerAccount {
   updatedAt          DateTime           @updatedAt
   cases              CustomerCase[]
   feedback           BusinessFeedback[]
+  crmContacts        CrmContact[]
 
   @@index([companyId, status])
   @@index([companyId, churnRisk])
+}
+
+// CRM records are scoped to the existing company and customer-account boundary.
+// They do not give agents any connector, communication, or spending power.
+model CrmContact {
+  id                 String           @id @default(uuid())
+  companyId          String
+  company            Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customerAccountId  String?
+  customerAccount    CustomerAccount? @relation(fields: [customerAccountId], references: [id], onDelete: SetNull)
+  firstName          String
+  lastName           String
+  email              String?
+  title              String?
+  lifecycleStage     String           @default("LEAD")
+  source             String           @default("HUMAN_ENTERED")
+  consentStatus      String           @default("UNKNOWN")
+  dataClassification String           @default("CONFIDENTIAL")
+  owner              String
+  createdBy          String
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  activities         CrmActivity[]
+  agentTasks         CrmAgentTask[]
+
+  @@unique([companyId, email])
+  @@index([companyId, lifecycleStage])
+  @@index([customerAccountId])
+}
+
+model CrmActivity {
+  id          String     @id @default(uuid())
+  companyId   String
+  company     Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contactId   String
+  contact     CrmContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  type        String
+  summary     String
+  occurredAt  DateTime   @default(now())
+  source      String     @default("HUMAN_ENTERED")
+  agentId     String?
+  createdBy   String
+  createdAt   DateTime   @default(now())
+
+  @@index([companyId, occurredAt])
+  @@index([contactId, occurredAt])
+}
+
+model CrmAgentTask {
+  id               String      @id @default(uuid())
+  companyId        String
+  company          Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contactId        String?
+  contact          CrmContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  agentId          String
+  taskType         String
+  instruction      String
+  status           String      @default("DRAFT")
+  requiresApproval Boolean     @default(true)
+  approvedBy       String?
+  approvedAt       DateTime?
+  completedAt      DateTime?
+  createdBy        String
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  @@index([companyId, status])
+  @@index([contactId, status])
 }
 
 model CustomerCase {

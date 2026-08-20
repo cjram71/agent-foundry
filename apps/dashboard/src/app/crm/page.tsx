@@ -1,0 +1,22 @@
+import { requireDashboardAdmin } from '@/lib/dashboard/auth';
+import prisma from '@/lib/prisma';
+import { BOOSTA_COMPANY_ID } from '@/lib/company';
+import { Empty, OpsPage, safeDate } from '@/components/ops-shell';
+import { CrmControls } from './crm-controls';
+export const dynamic = 'force-dynamic';
+export default async function CrmPage() {
+  await requireDashboardAdmin();
+  const [contacts, tasks, department, agents] = await Promise.all([
+    prisma.crmContact.findMany({ where: { companyId: BOOSTA_COMPANY_ID }, orderBy: { updatedAt: 'desc' }, include: { customerAccount: { select: { accountName: true } }, activities: { orderBy: { occurredAt: 'desc' }, take: 1 }, agentTasks: { orderBy: { updatedAt: 'desc' }, take: 1 } } }),
+    prisma.crmAgentTask.findMany({ where: { companyId: BOOSTA_COMPANY_ID }, orderBy: { updatedAt: 'desc' }, take: 20, include: { contact: { select: { firstName: true, lastName: true } } } }),
+    prisma.companyDepartment.findUnique({ where: { companyId_code: { companyId: BOOSTA_COMPANY_ID, code: 'CRM' } } }),
+    prisma.companyAgent.findMany({ where: { companyId: BOOSTA_COMPANY_ID, departmentId: 'BSTA-DEPT-CRM' }, orderBy: { id: 'asc' } }),
+  ]);
+  return <OpsPage eyebrow="CRM DEPARTMENT" title="Relationships, under human authority" description="A VPS-native CRM: scoped records, explicit consent state, audit trails, and draft-only agent work. No connector or external action is enabled.">
+    <section className="record-grid"><div className="record-card"><strong>{contacts.length}</strong><span>Contacts</span><small>Confidential by default</small></div><div className="record-card"><strong>{tasks.filter((task) => task.status === 'DRAFT').length}</strong><span>Draft agent tasks</span><small>Approval required</small></div><div className="record-card"><strong>{agents.length}</strong><span>CRM agents</span><small>{agents.every((agent) => agent.status === 'STAGING') ? 'Staged only' : 'Review status'}</small></div><div className="record-card"><strong>0</strong><span>External actions</span><small>Fail-closed</small></div></section>
+    <section className="panel"><div className="panel-head"><div><h2>Department guardrails</h2><p>{department?.purpose ?? 'CRM department pending migration.'}</p></div><span className="badge">{department?.authorityLevel ?? 'ADVISORY'}</span></div><p className="muted">Agents may only read CRM-scoped records and draft internal tasks. Email, calendar, web access, payments, and autonomous execution remain disabled.</p></section>
+    <CrmControls contacts={contacts.map((contact) => ({ id: contact.id, name: contact.firstName + ' ' + contact.lastName }))} />
+    <section className="panel table-panel"><div className="panel-head"><div><h2>Relationship records</h2><p>Customer accounts remain the source of account-level truth.</p></div></div><div className="table"><div className="table-row table-head"><span>Contact</span><span>Stage & consent</span><span>Owner</span><span>Latest evidence</span><span>Agent state</span></div>{contacts.map((contact) => <div className="table-row" key={contact.id}><span><strong>{contact.firstName} {contact.lastName}</strong><small>{contact.title ?? 'No title'} · {contact.customerAccount?.accountName ?? 'Unlinked account'} · {contact.email ?? 'No email stored'}</small></span><span><i className="badge">{contact.lifecycleStage}</i><small>{contact.consentStatus}</small></span><span>{contact.owner}</span><span>{contact.activities[0] ? <small>{contact.activities[0].type} · {safeDate(contact.activities[0].occurredAt)}</small> : <small>No activity</small>}</span><span>{contact.agentTasks[0] ? <i className="badge">{contact.agentTasks[0].status}</i> : <small>No task</small>}</span></div>)}{!contacts.length ? <Empty>No contacts recorded. Add only relationship data you are authorized to hold.</Empty> : null}</div></section>
+    <section className="panel"><div className="panel-head"><div><h2>Agent review queue</h2><p>Approval changes task state only; it does not start a runner or enable tools.</p></div></div><div className="list">{tasks.map((task) => <article className="approval-row" key={task.id}><div><span className="badge">{task.status}</span><h3>{task.taskType}</h3><p>{task.contact ? task.contact.firstName + ' ' + task.contact.lastName + ' · ' : ''}{task.agentId} · {task.instruction}</p></div><small>{safeDate(task.createdAt)}</small></article>)}{!tasks.length ? <Empty>No agent work has been drafted.</Empty> : null}</div></section>
+  </OpsPage>;
+}
