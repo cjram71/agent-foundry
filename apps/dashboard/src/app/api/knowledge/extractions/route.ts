@@ -1,20 +1,12 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { getSession, isSameOrigin } from '@/lib/auth';
 import { BOOSTA_COMPANY_ID } from '@/lib/company';
+import { requireApiAdmin as admin } from '@/lib/dashboard/auth';
 import { generateKnowledge } from '@foundry/knowledge-model';
 import { EXTRACTION_JSON_SCHEMA, buildExtractionPrompt, parseExtraction } from '@/lib/knowledge/extract';
 import { applyExtractionResult } from '@/lib/knowledge/apply';
 import { evaluateExtractionRun } from '@/lib/knowledge/evaluate';
 import { defaultCostLimitMinor, defaultTokenLimit, estimateTokens, postCallOverage, preCallBudgetCheck } from '@/lib/knowledge/budget';
-
-async function admin(request?: Request) {
-  const session = await getSession();
-  if (!session) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
-  if (session.role !== 'ADMIN') return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
-  if (request && !isSameOrigin(request)) return { error: NextResponse.json({ error: 'Invalid origin' }, { status: 403 }) };
-  return { session };
-}
 
 const EXTRACTION_MODEL = 'orchestrator-knowledge-tier';
 const PROMPT_VERSION = 'v1';

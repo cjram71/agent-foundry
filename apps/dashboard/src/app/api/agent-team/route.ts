@@ -6,25 +6,8 @@ import { certificationReadiness } from "@foundry/agent-contracts";
 import { starterAgentTemplates } from "@foundry/agent-contracts";
 import { stageAgentVersion } from "@/lib/agent-registry";
 import { redactForModel } from "@foundry/memory-policy";
-import { getSession, isSameOrigin } from "@/lib/auth";
+import { requireApiAdmin as admin } from "@/lib/dashboard/auth";
 import prisma from "@/lib/prisma";
-
-async function admin(request?: Request) {
-  const session = await getSession();
-  if (!session)
-    return {
-      error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
-    };
-  if (session.role !== "ADMIN")
-    return {
-      error: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
-    };
-  if (request && !isSameOrigin(request))
-    return {
-      error: NextResponse.json({ error: "Invalid origin" }, { status: 403 }),
-    };
-  return { session };
-}
 const message = (error: unknown) =>
   error instanceof Error ? error.message : "Agent Team request failed";
 

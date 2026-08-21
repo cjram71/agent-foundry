@@ -1,19 +1,10 @@
 import { NextResponse } from "next/server";
 import { validateCharter, validateMissionTemplate } from "@foundry/mission";
 import { aggregateEconomics, validateEconomicEvent } from "@foundry/cost";
-import { getSession, isSameOrigin } from "@/lib/auth";
+import { requireApiAdmin as admin } from "@/lib/dashboard/auth";
 import prisma from "@/lib/prisma";
 const json = (value: unknown, status = 200) =>
   NextResponse.json(value, { status });
-async function admin(request?: Request) {
-  const session = await getSession();
-  if (!session) return { error: json({ error: "Unauthorized" }, 401) };
-  if (session.role !== "ADMIN")
-    return { error: json({ error: "Forbidden" }, 403) };
-  if (request && !isSameOrigin(request))
-    return { error: json({ error: "Invalid origin" }, 403) };
-  return { session };
-}
 const plain = (value: unknown) =>
   JSON.parse(
     JSON.stringify(value, (_, item) =>

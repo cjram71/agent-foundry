@@ -1,16 +1,8 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { getSession, isSameOrigin } from '@/lib/auth';
 import { BOOSTA_COMPANY_ID } from '@/lib/company';
+import { requireApiAdmin as admin } from '@/lib/dashboard/auth';
 import { hashMasterPlan, normalizeMasterPlan, validRepositoryPart } from '@/lib/project-governance';
-
-async function admin(request?: Request) {
-  const session = await getSession();
-  if (!session) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
-  if (session.role !== 'ADMIN') return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
-  if (request && !isSameOrigin(request)) return { error: NextResponse.json({ error: 'Invalid origin' }, { status: 403 }) };
-  return { session };
-}
 
 export async function GET() {
   const auth = await admin(); if (auth.error) return auth.error;
