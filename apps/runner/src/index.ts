@@ -20,7 +20,8 @@ dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 dotenv.config({ path: path.resolve(__dirname, '../../../packages/database/.env') });
 
 const prisma = new PrismaClient();
-const connection = process.env.REDIS_URL ? new IORedis(process.env.REDIS_URL, { maxRetriesPerRequest: null }) : new IORedis({ host: process.env.REDIS_HOST || '127.0.0.1', port: Number(process.env.REDIS_PORT || 6379), password: process.env.REDIS_PASSWORD || undefined, maxRetriesPerRequest: null });
+if (!process.env.REDIS_URL) throw new Error('REDIS_URL is required to connect to Redis (no host/port fallback is used).');
+const connection = new IORedis(process.env.REDIS_URL, { maxRetriesPerRequest: null });
 const MAX_CONTEXT_BYTES = 24_000;
 const MAX_FILE_BYTES = 80_000;
 const CODER_JSON_SCHEMA = {
