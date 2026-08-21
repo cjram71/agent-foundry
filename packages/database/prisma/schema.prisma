@@ -425,6 +425,10 @@ model Company {
   agentRecommendations AgentRecommendation[]
   worldEntities        WorldEntity[]
   worldRelations       WorldRelation[]
+  knowledgeDocuments   KnowledgeDocument[]
+  knowledgeExtractionRuns KnowledgeExtractionRun[]
+  knowledgeAliases     KnowledgeAlias[]
+  knowledgeEvidence    KnowledgeEvidence[]
   twinScenarios        TwinScenario[]
   healthSnapshots      HealthSnapshot[]
   attentionItems       AttentionItem[]
@@ -1594,6 +1598,8 @@ model WorldEntity {
   outgoing         WorldRelation[]      @relation("WorldRelationFrom")
   incoming         WorldRelation[]      @relation("WorldRelationTo")
   scenarioChanges  TwinScenarioChange[]
+  aliases          KnowledgeAlias[]
+  evidence         KnowledgeEvidence[]
 
   @@unique([companyId, canonicalKey])
   @@index([companyId, entityType, validationStatus])
@@ -1615,9 +1621,114 @@ model WorldRelation {
   validationStatus String      @default("PROPOSED")
   createdBy        String
   createdAt        DateTime    @default(now())
+  evidence         KnowledgeEvidence[]
 
   @@unique([companyId, fromEntityId, toEntityId, relationType])
   @@index([companyId, relationType])
+}
+
+/// Provenance-first knowledge graph: approved source documents. Extraction
+/// and resolution write proposed WorldEntity/WorldRelation rows plus
+/// KnowledgeEvidence citing back to a document; see
+/// docs/CRM_KNOWLEDGE_GRAPH_ROADMAP.md.
+model KnowledgeDocument {
+  id               String                   @id @default(uuid())
+  companyId        String
+  company          Company                  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  namespace        String
+  title            String
+  sourceUri        String
+  contentHash      String
+  classification   String                   @default("INTERNAL")
+  ingestionStatus  String                   @default("PENDING_APPROVAL")
+  approvedBy       String?
+  approvedAt       DateTime?
+  createdBy        String
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+  extractionRuns   KnowledgeExtractionRun[]
+  evidence         KnowledgeEvidence[]
+
+  @@unique([companyId, contentHash])
+  @@index([companyId, namespace, ingestionStatus])
+}
+
+model KnowledgeExtractionRun {
+  id                  String              @id @default(uuid())
+  companyId           String
+  company             Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  documentId          String
+  document            KnowledgeDocument   @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  model               String
+  promptVersion       String
+  schemaVersion       String
+  tokenLimit          Int?
+  costLimitMinor      BigInt?
+  status              String              @default("PENDING")
+  outcome             Json?
+  proposedEntityCount Int                 @default(0)
+  proposedEdgeCount   Int                 @default(0)
+  errorMessage        String?
+  createdBy           String
+  createdAt           DateTime            @default(now())
+  completedAt         DateTime?
+  aliases             KnowledgeAlias[]
+  evidence            KnowledgeEvidence[]
+
+  @@index([companyId, documentId, createdAt])
+  @@index([companyId, status])
+}
+
+/// Surface forms proposed by an extraction run. entityId stays null for an
+/// unresolved/unmatched name so it is never silently dropped.
+model KnowledgeAlias {
+  id                String                  @id @default(uuid())
+  companyId         String
+  company           Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  surfaceForm       String
+  entityId          String?
+  entity            WorldEntity?            @relation(fields: [entityId], references: [id], onDelete: SetNull)
+  extractionRunId   String?
+  extractionRun     KnowledgeExtractionRun? @relation(fields: [extractionRunId], references: [id], onDelete: SetNull)
+  resolutionStatus  String                  @default("PROPOSED")
+  confidence        Float                   @default(0)
+  createdBy         String
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  @@index([companyId, resolutionStatus])
+  @@index([entityId])
+}
+
+/// Provenance for one proposed WorldEntity or WorldRelation assertion.
+/// Exactly one of entityId/relationId is set (enforced in migration SQL).
+/// Writes start PROPOSED; only reviewStatus = HUMAN_APPROVED counts as promoted.
+model KnowledgeEvidence {
+  id              String                  @id @default(uuid())
+  companyId       String
+  company         Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  documentId      String
+  document        KnowledgeDocument       @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  extractionRunId String
+  extractionRun   KnowledgeExtractionRun  @relation(fields: [extractionRunId], references: [id], onDelete: Cascade)
+  entityId        String?
+  entity          WorldEntity?            @relation(fields: [entityId], references: [id], onDelete: SetNull)
+  relationId      String?
+  relation        WorldRelation?          @relation(fields: [relationId], references: [id], onDelete: SetNull)
+  excerpt         String
+  excerptHash     String
+  sourceLocation  String
+  extractedAt     DateTime                @default(now())
+  reviewStatus    String                  @default("PROPOSED")
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  createdBy       String
+  createdAt       DateTime                @default(now())
+
+  @@index([companyId, entityId])
+  @@index([companyId, relationId])
+  @@index([companyId, reviewStatus])
+  @@index([extractionRunId])
 }
 
 model TwinScenario {
