@@ -33,7 +33,7 @@ export async function POST(request: Request) {
     const actor = auth.session!.userId;
     if (body.action === 'create_contact') {
       const email = text(body.email, 'email', 320, false).toLowerCase() || null;
-      if (email && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) throw new Error('A valid email is required');
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('A valid email is required');
       const row = await prisma.$transaction(async (tx) => {
         const contact = await tx.crmContact.create({ data: { companyId: BOOSTA_COMPANY_ID, firstName: text(body.firstName, 'first name', 120), lastName: text(body.lastName, 'last name', 120), email, title: text(body.title, 'title', 200, false) || null, lifecycleStage: 'LEAD', source: 'HUMAN_ENTERED', consentStatus: 'UNKNOWN', owner: text(body.owner, 'owner', 160), createdBy: actor } });
         await tx.auditEvent.create({ data: { actor, action: 'crm.contact_created', target: contact.id, result: 'success', metadata: { source: 'human', externalAction: false, emailStored: Boolean(email) } } });
