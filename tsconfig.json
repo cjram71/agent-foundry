@@ -13,6 +13,7 @@
     {"path":"./packages/memory-policy"},
     {"path":"./packages/agent-contracts"},
     {"path":"./packages/model-router"},
+    {"path":"./packages/knowledge-model"},
     {"path":"./packages/cost"},
     {"path":"./packages/database"},
     {"path":"./packages/github"},

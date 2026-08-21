@@ -33,6 +33,7 @@ const sections = [
       ["/intelligence/agents", "AI Workforce"],
       ["/workforce", "Departments"],
       ["/intelligence/knowledge", "Company memory"],
+      ["/knowledge", "Knowledge graph"],
     ],
   ],
   [
