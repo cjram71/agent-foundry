@@ -3,6 +3,17 @@ class InvalidModelOutput extends Error {}
 
 export type KnowledgeGeneration = { text: string; tokens: number; provider: 'openai' | 'nvidia' | 'ollama'; model: string; fallbackCount: number };
 
+/** Caller-supplied structured-output schema for the OpenAI leg only (ollama
+ * and nvidia already accept free-form JSON, so a caller's own `validate`
+ * callback is their real schema gate there). Without this, OpenAI is forced
+ * into the original knowledge-agent report shape below, which silently
+ * breaks any other caller that falls through to it. `strict: false` is the
+ * default for custom schemas since freeform nested objects (e.g. an
+ * extraction's per-entity `attributes` bag) aren't representable in OpenAI's
+ * strict structured-output mode — the caller's `validate` callback remains
+ * the actual correctness gate either way. */
+export type OpenAiJsonSchema = { name: string; schema: object; strict?: boolean };
+
 type ChatBody = { choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number }; model?: string; error?: { message?: string } };
 type ResponsesBody = { output_text?: string; output?: Array<{ content?: Array<{ type?: string; text?: string }> }>; usage?: { total_tokens?: number }; model?: string; error?: { message?: string } };
 
@@ -33,12 +44,17 @@ async function ollama(prompt: string, reasoning = false): Promise<KnowledgeGener
   return { text, tokens: (body.prompt_eval_count || 0) + (body.eval_count || 0), provider: 'ollama', model, fallbackCount: 0 };
 }
 
-async function openai(prompt: string, webSearch: boolean): Promise<KnowledgeGeneration> {
+const DEFAULT_OPENAI_SCHEMA: OpenAiJsonSchema = {
+  name: 'knowledge_agent_result',
+  strict: true,
+  schema: { type: 'object', additionalProperties: false, required: ['completed', 'waitingForApproval', 'uncertain', 'evidence', 'memoryCandidates', 'artifact'], properties: { completed: { type: 'array', items: { type: 'string' }, maxItems: 30 }, waitingForApproval: { type: 'array', items: { type: 'string' }, maxItems: 30 }, uncertain: { type: 'array', items: { type: 'string' }, maxItems: 30 }, evidence: { type: 'array', items: { type: 'string' }, minItems: 2, maxItems: 60 }, memoryCandidates: { type: 'array', maxItems: 10, items: { type: 'object', additionalProperties: false, required: ['summary', 'content', 'sourceReference', 'confidence'], properties: { summary: { type: 'string', maxLength: 500 }, content: { type: 'string', maxLength: 4000 }, sourceReference: { type: 'string', maxLength: 2000 }, confidence: { type: 'number', minimum: 0, maximum: 1 } } } }, artifact: { type: 'string', maxLength: 120000 } } },
+};
+
+async function openai(prompt: string, webSearch: boolean, jsonSchema: OpenAiJsonSchema): Promise<KnowledgeGeneration> {
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw new Error('OPENAI_API_KEY is not configured');
   const model = process.env.OPENAI_MODEL || 'gpt-5-mini';
-  const schema = { type: 'object', additionalProperties: false, required: ['completed', 'waitingForApproval', 'uncertain', 'evidence', 'memoryCandidates', 'artifact'], properties: { completed: { type: 'array', items: { type: 'string' }, maxItems: 30 }, waitingForApproval: { type: 'array', items: { type: 'string' }, maxItems: 30 }, uncertain: { type: 'array', items: { type: 'string' }, maxItems: 30 }, evidence: { type: 'array', items: { type: 'string' }, minItems: 2, maxItems: 60 }, memoryCandidates: { type: 'array', maxItems: 10, items: { type: 'object', additionalProperties: false, required: ['summary', 'content', 'sourceReference', 'confidence'], properties: { summary: { type: 'string', maxLength: 500 }, content: { type: 'string', maxLength: 4000 }, sourceReference: { type: 'string', maxLength: 2000 }, confidence: { type: 'number', minimum: 0, maximum: 1 } } } }, artifact: { type: 'string', maxLength: 120000 } } };
-  const response = await fetch('https://api.openai.com/v1/responses', { method: 'POST', headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' }, body: JSON.stringify({ model, input: prompt, tools: webSearch ? [{ type: 'web_search' }] : undefined, text: { format: { type: 'json_schema', name: 'knowledge_agent_result', strict: true, schema } } }), signal: timeout() });
+  const response = await fetch('https://api.openai.com/v1/responses', { method: 'POST', headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' }, body: JSON.stringify({ model, input: prompt, tools: webSearch ? [{ type: 'web_search' }] : undefined, text: { format: { type: 'json_schema', name: jsonSchema.name, strict: jsonSchema.strict ?? false, schema: jsonSchema.schema } } }), signal: timeout() });
   const body = await response.json() as ResponsesBody;
   if (!response.ok) throw new Error(`OpenAI HTTP ${response.status}: ${body.error?.message || 'request failed'}`);
   const text = body.output_text || body.output?.flatMap(item => item.content || []).find(item => item.type === 'output_text')?.text || '';
@@ -46,12 +62,13 @@ async function openai(prompt: string, webSearch: boolean): Promise<KnowledgeGene
   return { text: text.trim(), tokens: body.usage?.total_tokens || 0, provider: 'openai', model: body.model || model, fallbackCount: 0 };
 }
 
-export async function generateKnowledge(prompt: string, work: KnowledgeWork, validate?: (text: string) => void): Promise<KnowledgeGeneration> {
+export async function generateKnowledge(prompt: string, work: KnowledgeWork, validate?: (text: string) => void, options?: { openaiJsonSchema?: OpenAiJsonSchema }): Promise<KnowledgeGeneration> {
+  const jsonSchema = options?.openaiJsonSchema ?? DEFAULT_OPENAI_SCHEMA;
   const routes = work === 'public-research'
-    ? [() => openai(prompt, true)]
+    ? [() => openai(prompt, true, jsonSchema)]
     : work === 'private-analysis'
-      ? [() => ollama(prompt), () => nvidia(prompt), () => openai(prompt, false)]
-      : [() => nvidia(prompt), () => ollama(prompt, true), () => openai(prompt, false)];
+      ? [() => ollama(prompt), () => nvidia(prompt), () => openai(prompt, false, jsonSchema)]
+      : [() => nvidia(prompt), () => ollama(prompt, true), () => openai(prompt, false, jsonSchema)];
   let last: unknown;
   for (let index = 0; index < routes.length; index++) {
     try {

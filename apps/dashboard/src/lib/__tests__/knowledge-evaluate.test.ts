@@ -47,23 +47,28 @@ test('buildFidelityPrompt includes each claim excerpt and id', () => {
 });
 
 test('parseFidelityVerdicts accepts one entry per expected claim', () => {
-  const text = JSON.stringify([{ claimId: 'ev1', verdict: 'APPROVED', reason: 'supported' }]);
+  const text = JSON.stringify({ verdicts: [{ claimId: 'ev1', verdict: 'APPROVED', reason: 'supported' }] });
   const result = parseFidelityVerdicts(text, ['ev1']);
   assert.equal(result.length, 1);
   assert.equal(result[0].verdict, 'APPROVED');
 });
 
+test('parseFidelityVerdicts rejects a bare top-level array (must be an object with a verdicts array)', () => {
+  const text = JSON.stringify([{ claimId: 'ev1', verdict: 'APPROVED', reason: '' }]);
+  assert.throws(() => parseFidelityVerdicts(text, ['ev1']), /must be a JSON object with a "verdicts" array/);
+});
+
 test('parseFidelityVerdicts rejects a claimId outside this run', () => {
-  const text = JSON.stringify([{ claimId: 'not-in-this-run', verdict: 'APPROVED', reason: '' }]);
+  const text = JSON.stringify({ verdicts: [{ claimId: 'not-in-this-run', verdict: 'APPROVED', reason: '' }] });
   assert.throws(() => parseFidelityVerdicts(text, ['ev1']), /must reference a claim in this run/);
 });
 
 test('parseFidelityVerdicts rejects a missing claim (not exactly one entry per claim)', () => {
-  const text = JSON.stringify([]);
+  const text = JSON.stringify({ verdicts: [] });
   assert.throws(() => parseFidelityVerdicts(text, ['ev1']), /exactly one entry per claim/);
 });
 
 test('parseFidelityVerdicts rejects an invalid verdict value', () => {
-  const text = JSON.stringify([{ claimId: 'ev1', verdict: 'MAYBE', reason: '' }]);
+  const text = JSON.stringify({ verdicts: [{ claimId: 'ev1', verdict: 'MAYBE', reason: '' }] });
   assert.throws(() => parseFidelityVerdicts(text, ['ev1']), /must be APPROVED or REJECTED/);
 });

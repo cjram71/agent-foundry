@@ -3,7 +3,7 @@ import prisma from '@/lib/prisma';
 import { getSession, isSameOrigin } from '@/lib/auth';
 import { BOOSTA_COMPANY_ID } from '@/lib/company';
 import { generateKnowledge } from '@foundry/knowledge-model';
-import { buildExtractionPrompt, parseExtraction } from '@/lib/knowledge/extract';
+import { EXTRACTION_JSON_SCHEMA, buildExtractionPrompt, parseExtraction } from '@/lib/knowledge/extract';
 import { applyExtractionResult } from '@/lib/knowledge/apply';
 import { evaluateExtractionRun } from '@/lib/knowledge/evaluate';
 import { defaultCostLimitMinor, defaultTokenLimit, estimateTokens, postCallOverage, preCallBudgetCheck } from '@/lib/knowledge/budget';
@@ -19,6 +19,13 @@ async function admin(request?: Request) {
 const EXTRACTION_MODEL = 'orchestrator-knowledge-tier';
 const PROMPT_VERSION = 'v1';
 const SCHEMA_VERSION = 'v1';
+
+// costLimitMinor is a Prisma BigInt; NextResponse.json (JSON.stringify under
+// the hood) cannot serialize BigInt values, so every response that includes
+// a full run row must convert it first.
+function serializeRun<T extends { costLimitMinor: bigint | null }>(run: T) {
+  return { ...run, costLimitMinor: run.costLimitMinor === null ? null : Number(run.costLimitMinor) };
+}
 
 export async function POST(request: Request) {
   const auth = await admin(request);
@@ -39,7 +46,7 @@ export async function POST(request: Request) {
     if (!budget.allowed) {
       const rejected = await prisma.knowledgeExtractionRun.create({ data: { companyId: BOOSTA_COMPANY_ID, documentId: document.id, model: EXTRACTION_MODEL, promptVersion: PROMPT_VERSION, schemaVersion: SCHEMA_VERSION, tokenLimit, costLimitMinor, status: 'FAILED', errorMessage: budget.reason, createdBy: actor } });
       await prisma.auditEvent.create({ data: { actor, action: 'knowledge.extraction_rejected', target: rejected.id, result: 'rejected', metadata: { reason: budget.reason, executionEnabled: false } } });
-      return NextResponse.json({ error: budget.reason, run: rejected }, { status: 429 });
+      return NextResponse.json({ error: budget.reason, run: serializeRun(rejected) }, { status: 429 });
     }
 
     const run = await prisma.knowledgeExtractionRun.create({ data: { companyId: BOOSTA_COMPANY_ID, documentId: document.id, model: EXTRACTION_MODEL, promptVersion: PROMPT_VERSION, schemaVersion: SCHEMA_VERSION, tokenLimit, costLimitMinor, status: 'PENDING', createdBy: actor } });
@@ -47,7 +54,7 @@ export async function POST(request: Request) {
     let generation;
     try {
       const prompt = buildExtractionPrompt(document);
-      generation = await generateKnowledge(prompt, 'private-analysis', (text) => { parseExtraction(text); });
+      generation = await generateKnowledge(prompt, 'private-analysis', (text) => { parseExtraction(text); }, { openaiJsonSchema: EXTRACTION_JSON_SCHEMA });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Extraction model call failed';
       await prisma.knowledgeExtractionRun.update({ where: { id: run.id }, data: { status: 'FAILED', errorMessage: message, completedAt: new Date() } });
@@ -76,7 +83,7 @@ export async function POST(request: Request) {
     });
     await prisma.auditEvent.create({ data: { actor, action: 'knowledge.extraction_evaluated', target: run.id, result: 'success', metadata: { evaluatorApprovedCount: evaluation.approvedCount, evaluatorRejectedCount: evaluation.rejectedCount, executionEnabled: false } } });
 
-    return NextResponse.json(finalRun, { status: 201 });
+    return NextResponse.json(serializeRun(finalRun), { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Extraction failed' }, { status: 400 });
   }
