@@ -1,3 +1,5 @@
+import type { OpenAiJsonSchema } from '@foundry/knowledge-model';
+
 export type ExtractionEntity = { localId: string; entityType: string; name: string; canonicalKey: string; attributes: Record<string, unknown>; confidence: number; excerpt: string; sourceLocation: string };
 export type ExtractionRelation = { fromLocalId: string; toLocalId: string; relationType: string; attributes: Record<string, unknown>; confidence: number; excerpt: string; sourceLocation: string };
 export type ExtractionAlias = { surfaceForm: string; localId: string | null; confidence: number };
@@ -6,6 +8,21 @@ export type ExtractionResult = { entities: ExtractionEntity[]; relations: Extrac
 const MAX_ENTITIES = 30;
 const MAX_RELATIONS = 60;
 const MAX_ALIASES = 40;
+
+/** For generateKnowledge's OpenAI fallback leg — see OpenAiJsonSchema's doc
+ * comment for why this exists and why it's non-strict. */
+export const EXTRACTION_JSON_SCHEMA: OpenAiJsonSchema = {
+  name: 'knowledge_extraction_result',
+  schema: {
+    type: 'object',
+    properties: {
+      entities: { type: 'array', maxItems: MAX_ENTITIES, items: { type: 'object', properties: { localId: { type: 'string' }, entityType: { type: 'string' }, name: { type: 'string' }, canonicalKey: { type: 'string' }, attributes: { type: 'object' }, confidence: { type: 'number' }, excerpt: { type: 'string' }, sourceLocation: { type: 'string' } }, required: ['localId', 'entityType', 'name', 'canonicalKey', 'attributes', 'confidence', 'excerpt', 'sourceLocation'] } },
+      relations: { type: 'array', maxItems: MAX_RELATIONS, items: { type: 'object', properties: { fromLocalId: { type: 'string' }, toLocalId: { type: 'string' }, relationType: { type: 'string' }, attributes: { type: 'object' }, confidence: { type: 'number' }, excerpt: { type: 'string' }, sourceLocation: { type: 'string' } }, required: ['fromLocalId', 'toLocalId', 'relationType', 'attributes', 'confidence', 'excerpt', 'sourceLocation'] } },
+      aliases: { type: 'array', maxItems: MAX_ALIASES, items: { type: 'object', properties: { surfaceForm: { type: 'string' }, localId: { type: ['string', 'null'] }, confidence: { type: 'number' } }, required: ['surfaceForm', 'localId', 'confidence'] } },
+    },
+    required: ['entities', 'relations', 'aliases'],
+  },
+};
 
 export function buildExtractionPrompt(document: { title: string; namespace: string; content: string }): string {
   return `You are a provenance-first knowledge extraction agent. Read the document below and propose structured facts. Every fact MUST be traceable to a short verbatim excerpt from the document text below — never infer beyond what the text states, and never invent entities, relationships, or aliases that are not grounded in the text.

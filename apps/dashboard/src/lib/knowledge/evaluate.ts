@@ -1,11 +1,22 @@
 import { createHash } from 'node:crypto';
 import type { Prisma, PrismaClient } from '@prisma/client';
-import { generateKnowledge } from '@foundry/knowledge-model';
+import { generateKnowledge, type OpenAiJsonSchema } from '@foundry/knowledge-model';
 
 type QueryClient = PrismaClient | Prisma.TransactionClient;
 
 export type ClaimVerdict = { claimId: string; deterministicApproved: boolean; deterministicReason: string | null; modelApproved: boolean | null; modelReason: string | null; approved: boolean };
 export type EvaluationResult = { verdicts: ClaimVerdict[]; approvedCount: number; rejectedCount: number };
+
+/** For generateKnowledge's OpenAI fallback leg — see OpenAiJsonSchema's doc
+ * comment in @foundry/knowledge-model for why this exists. */
+const FIDELITY_JSON_SCHEMA: OpenAiJsonSchema = {
+  name: 'knowledge_fidelity_verdicts',
+  schema: {
+    type: 'object',
+    properties: { verdicts: { type: 'array', items: { type: 'object', properties: { claimId: { type: 'string' }, verdict: { type: 'string', enum: ['APPROVED', 'REJECTED'] }, reason: { type: 'string' } }, required: ['claimId', 'verdict', 'reason'] } } },
+    required: ['verdicts'],
+  },
+};
 
 export type EvidenceForEval = {
   id: string;
@@ -39,23 +50,31 @@ export function evaluateEvidenceDeterministically(row: EvidenceForEval): { appro
   return { approved: true, reason: null };
 }
 
+// A bare top-level JSON array was tried first and reliably degraded to a
+// single entry across every provider's constrained-JSON mode (Ollama
+// format:'json', NVIDIA/OpenAI json_object) — those modes bias toward a
+// single top-level object. Wrapping the array in {"verdicts": [...]} fixed
+// it end to end; verified against a live 4-claim run.
 export function buildFidelityPrompt(rows: EvidenceForEval[]): string {
   const claims = rows.map((row) => ({ claimId: row.id, subject: row.entity ? `entity: ${row.entity.name}` : `relation: ${row.relation?.relationType}`, excerpt: row.excerpt }));
-  return `You are an evidence-fidelity judge for a knowledge graph. For each claim below, judge only whether its excerpt textually supports the claim — do not use outside knowledge, do not guess.
+  return `You are an evidence-fidelity judge for a knowledge graph. There are ${claims.length} claims below. For EACH claim, judge only whether its excerpt textually supports the claim — do not use outside knowledge, do not guess.
 
 CLAIMS
 ${JSON.stringify(claims, null, 2)}
 
-Return ONLY a JSON array, nothing else, no markdown fences: [{"claimId": string, "verdict": "APPROVED" or "REJECTED", "reason": string}], with exactly one entry per claim above.`;
+Return ONLY a JSON object, nothing else, no markdown fences, with exactly this shape:
+{"verdicts": [{"claimId": string, "verdict": "APPROVED" or "REJECTED", "reason": string}, ...]}
+The "verdicts" array MUST contain exactly ${claims.length} entries, one per claim listed above. Do not omit any claim.`;
 }
 
 export function parseFidelityVerdicts(text: string, expectedClaimIds: string[]): Array<{ claimId: string; verdict: 'APPROVED' | 'REJECTED'; reason: string }> {
   let parsed: unknown;
   try { parsed = JSON.parse(text); } catch { throw new Error('Fidelity verdict response was not valid JSON'); }
-  if (!Array.isArray(parsed)) throw new Error('Fidelity verdict response must be a JSON array');
+  if (!parsed || typeof parsed !== 'object' || !Array.isArray((parsed as Record<string, unknown>).verdicts)) throw new Error('Fidelity verdict response must be a JSON object with a "verdicts" array');
+  const verdicts = (parsed as Record<string, unknown>).verdicts as unknown[];
   const expected = new Set(expectedClaimIds);
   const seen = new Set<string>();
-  const result = parsed.map((raw, index) => {
+  const result = verdicts.map((raw, index) => {
     const v = raw as Record<string, unknown>;
     if (typeof v.claimId !== 'string' || !expected.has(v.claimId)) throw new Error(`verdicts[${index}].claimId must reference a claim in this run`);
     if (seen.has(v.claimId)) throw new Error(`verdicts[${index}].claimId is duplicated`);
@@ -90,10 +109,13 @@ export async function evaluateExtractionRun(client: QueryClient, params: { runId
     try {
       const prompt = buildFidelityPrompt(rows);
       const claimIds = rows.map((row) => row.id);
-      const response = await generateKnowledge(prompt, 'private-analysis', (text) => { parseFidelityVerdicts(text, claimIds); });
+      const response = await generateKnowledge(prompt, 'private-analysis', (text) => { parseFidelityVerdicts(text, claimIds); }, { openaiJsonSchema: FIDELITY_JSON_SCHEMA });
       modelVerdicts = new Map(parseFidelityVerdicts(response.text, claimIds).map((v) => [v.claimId, { approved: v.verdict === 'APPROVED', reason: v.reason }]));
-    } catch {
-      // Lens B unavailable this run — leave modelVerdicts empty; see doc comment above.
+    } catch (error) {
+      // Lens B unavailable this run — leave modelVerdicts empty; see doc comment
+      // above. Logged (not swallowed silently) so a real outage is visible to
+      // an operator instead of just quietly downgrading every review hint.
+      console.error('[knowledge/evaluate] Lens B unavailable:', error instanceof Error ? error.message : String(error));
     }
   }
 
