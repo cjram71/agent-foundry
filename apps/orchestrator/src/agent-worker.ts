@@ -9,7 +9,7 @@ import { transitionTask, emitTaskEvent } from '@foundry/state-machine';
 import { deferJobWhileStopped } from '@foundry/ops';
 import { estimateUsd, parseRatePerMillion, RATE_ENV } from '@foundry/cost';
 import { parseKnowledgeAgentResult } from './agent-result';
-import { generateKnowledge } from './knowledge-model';
+import { generateKnowledge } from '@foundry/knowledge-model';
 
 export function startKnowledgeAgentWorker(prisma: PrismaClient, connection: IORedis) {
   const agentQueue = new Queue('foundry-agent-runs', { connection });

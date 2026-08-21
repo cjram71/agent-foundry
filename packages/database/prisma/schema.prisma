@@ -1638,6 +1638,7 @@ model KnowledgeDocument {
   namespace        String
   title            String
   sourceUri        String
+  content          String
   contentHash      String
   classification   String                   @default("INTERNAL")
   ingestionStatus  String                   @default("PENDING_APPROVAL")

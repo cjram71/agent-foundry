@@ -16,6 +16,7 @@
     "@foundry/agent-contracts": "^1.0.0",
     "@foundry/cost": "0.1.0",
     "@foundry/github": "0.1.0",
+    "@foundry/knowledge-model": "0.1.0",
     "@foundry/memory": "^0.1.0",
     "@foundry/memory-policy": "^0.1.0",
     "@foundry/model-router": "0.1.0",

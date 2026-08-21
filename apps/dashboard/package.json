@@ -12,6 +12,7 @@
   "dependencies": {
     "@foundry/agent-contracts": "1.0.0",
     "@foundry/cost": "0.1.0",
+    "@foundry/knowledge-model": "0.1.0",
     "@foundry/manager": "0.1.0",
     "@foundry/memory-policy": "^0.1.0",
     "@foundry/mission": "0.1.0",
