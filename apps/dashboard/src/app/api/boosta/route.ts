@@ -5,6 +5,7 @@ import prisma from "@/lib/prisma";
 export async function GET() {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!isAdmin(session)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
   const workspace = await prisma.boostaWorkspace.findUnique({
     where: { id: "BSTA-WORKSPACE-001" },
     include: {

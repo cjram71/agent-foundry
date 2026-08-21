@@ -1,10 +1,9 @@
-import { redirect } from "next/navigation";
-import { getSession } from "@/lib/auth";
+import { requireDashboardAdmin } from "@/lib/dashboard/auth";
 import prisma from "@/lib/prisma";
 
 const money = (minor: bigint | null | undefined) => minor == null ? "--" : `${(Number(minor) / 100).toLocaleString("sv-SE")} SEK`;
 export default async function BoostaWorkspacePage() {
-  const session = await getSession(); if (!session) redirect("/login");
+  await requireDashboardAdmin();
   const w = await prisma.boostaWorkspace.findUnique({where:{id:"BSTA-WORKSPACE-001"},include:{
     brainVersions:{orderBy:{version:"desc"},take:1}, books:{include:{author:true,submissions:true}}, roles:true,
     approvals:{orderBy:{requestedAt:"desc"},take:30}, subscribers:true, experiments:{orderBy:{createdAt:"desc"}},
