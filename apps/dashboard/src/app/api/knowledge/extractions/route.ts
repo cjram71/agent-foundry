@@ -5,6 +5,7 @@ import { BOOSTA_COMPANY_ID } from '@/lib/company';
 import { generateKnowledge } from '@foundry/knowledge-model';
 import { buildExtractionPrompt, parseExtraction } from '@/lib/knowledge/extract';
 import { applyExtractionResult } from '@/lib/knowledge/apply';
+import { evaluateExtractionRun } from '@/lib/knowledge/evaluate';
 import { defaultCostLimitMinor, defaultTokenLimit, estimateTokens, postCallOverage, preCallBudgetCheck } from '@/lib/knowledge/budget';
 
 async function admin(request?: Request) {
@@ -62,9 +63,20 @@ export async function POST(request: Request) {
     }
 
     const parsed = parseExtraction(generation.text);
-    const result = await prisma.$transaction((tx) => applyExtractionResult(tx, { companyId: BOOSTA_COMPANY_ID, document, runId: run.id, actor, parsed, generation: generation! }));
+    await prisma.$transaction((tx) => applyExtractionResult(tx, { companyId: BOOSTA_COMPANY_ID, document, runId: run.id, actor, parsed, generation: generation! }));
 
-    return NextResponse.json(result, { status: 201 });
+    // Evaluation runs after the write transaction commits (it makes its own
+    // model call and shouldn't hold DB locks while doing so). Advisory only —
+    // see lib/knowledge/evaluate.ts; a failure here never touches the
+    // already-written PROPOSED entities/relations/evidence.
+    const evaluation = await evaluateExtractionRun(prisma, { runId: run.id, companyId: BOOSTA_COMPANY_ID });
+    const finalRun = await prisma.knowledgeExtractionRun.update({
+      where: { id: run.id },
+      data: { outcome: { tokensUsed: generation.tokens, provider: generation.provider, model: generation.model, fallbackCount: generation.fallbackCount, evaluatorVerdicts: evaluation.verdicts, evaluatorApprovedCount: evaluation.approvedCount, evaluatorRejectedCount: evaluation.rejectedCount } },
+    });
+    await prisma.auditEvent.create({ data: { actor, action: 'knowledge.extraction_evaluated', target: run.id, result: 'success', metadata: { evaluatorApprovedCount: evaluation.approvedCount, evaluatorRejectedCount: evaluation.rejectedCount, executionEnabled: false } } });
+
+    return NextResponse.json(finalRun, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Extraction failed' }, { status: 400 });
   }

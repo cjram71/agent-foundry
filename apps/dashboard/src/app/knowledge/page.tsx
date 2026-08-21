@@ -1,14 +1,17 @@
 import { requireDashboardAdmin } from '@/lib/dashboard/auth';
 import prisma from '@/lib/prisma';
 import { BOOSTA_COMPANY_ID } from '@/lib/company';
-import { Empty, OpsPage, safeDate } from '@/components/ops-shell';
+import { Empty, EntityLink, OpsPage, safeDate } from '@/components/ops-shell';
 import { KnowledgeControls } from './knowledge-controls';
 export const dynamic = 'force-dynamic';
 export default async function KnowledgePage() {
   await requireDashboardAdmin();
-  const [documents, runs] = await Promise.all([
+  const [documents, runs, proposedEntityCount, proposedRelationCount, unmatchedAliasCount] = await Promise.all([
     prisma.knowledgeDocument.findMany({ where: { companyId: BOOSTA_COMPANY_ID }, orderBy: { createdAt: 'desc' }, take: 50 }),
     prisma.knowledgeExtractionRun.findMany({ where: { companyId: BOOSTA_COMPANY_ID }, orderBy: { createdAt: 'desc' }, take: 20, include: { document: { select: { title: true } } } }),
+    prisma.worldEntity.count({ where: { companyId: BOOSTA_COMPANY_ID, validationStatus: 'PROPOSED' } }),
+    prisma.worldRelation.count({ where: { companyId: BOOSTA_COMPANY_ID, validationStatus: 'PROPOSED' } }),
+    prisma.knowledgeAlias.count({ where: { companyId: BOOSTA_COMPANY_ID, resolutionStatus: 'UNMATCHED' } }),
   ]);
   const pending = documents.filter((document) => document.ingestionStatus === 'PENDING_APPROVAL');
   const approved = documents.filter((document) => document.ingestionStatus === 'APPROVED');
@@ -19,6 +22,7 @@ export default async function KnowledgePage() {
       <div className="record-card"><strong>{approved.length}</strong><span>Approved</span><small>Eligible for extraction</small></div>
       <div className="record-card"><strong>0</strong><span>External actions</span><small>Fail-closed</small></div>
     </section>
+    <EntityLink href="/knowledge/review" title="Review queue" detail={`${proposedEntityCount} entities · ${proposedRelationCount} relations · ${unmatchedAliasCount} unmatched aliases awaiting a human decision`} />
     <KnowledgeControls documents={pending.map((document) => ({ id: document.id, title: document.title }))} approvedDocuments={approved.map((document) => ({ id: document.id, title: document.title }))} />
     <section className="panel table-panel">
       <div className="panel-head"><div><h2>Registered documents</h2><p>Content hash prevents accidental duplicates within a company.</p></div></div>
