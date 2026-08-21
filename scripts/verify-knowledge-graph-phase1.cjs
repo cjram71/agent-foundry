@@ -11,7 +11,7 @@ async function main() {
   // rolled back deliberately so nothing persists from this smoke test.
   try {
     await prisma.$transaction(async (tx) => {
-      const doc = await tx.knowledgeDocument.create({ data: { companyId, namespace: 'crm', title: 'Smoke test document', sourceUri: 'test://smoke', contentHash: `smoke-${stamp}-a`, createdBy: actor } });
+      const doc = await tx.knowledgeDocument.create({ data: { companyId, namespace: 'crm', title: 'Smoke test document', sourceUri: 'test://smoke', content: 'Smoke test document body.', contentHash: `smoke-${stamp}-a`, createdBy: actor } });
       const approvedDoc = await tx.knowledgeDocument.update({ where: { id: doc.id }, data: { ingestionStatus: 'APPROVED', approvedBy: actor, approvedAt: new Date() } });
       const run = await tx.knowledgeExtractionRun.create({ data: { companyId, documentId: doc.id, model: 'smoke-model', promptVersion: 'v1', schemaVersion: 'v1', createdBy: actor } });
       const entity = await tx.worldEntity.create({ data: { companyId, entityType: 'SMOKE_TEST', name: 'Smoke Entity', canonicalKey: `smoke-entity-${stamp}-a`, attributes: {}, sourceReference: 'smoke', sourceAuthority: actor, createdBy: actor } });
@@ -36,7 +36,7 @@ async function main() {
   // Phase B: KnowledgeEvidence_exactly_one_target_check must reject neither/both entityId+relationId set.
   // Fixtures are committed (each statement needs its own transaction to keep testing after a rejection),
   // then explicitly deleted at the end.
-  const fixtureDoc = await prisma.knowledgeDocument.create({ data: { companyId, namespace: 'crm', title: 'Smoke check fixture', sourceUri: 'test://smoke-check', contentHash: `smoke-${stamp}-b`, createdBy: actor } });
+  const fixtureDoc = await prisma.knowledgeDocument.create({ data: { companyId, namespace: 'crm', title: 'Smoke check fixture', sourceUri: 'test://smoke-check', content: 'Smoke check fixture body.', contentHash: `smoke-${stamp}-b`, createdBy: actor } });
   const fixtureRun = await prisma.knowledgeExtractionRun.create({ data: { companyId, documentId: fixtureDoc.id, model: 'smoke-model', promptVersion: 'v1', schemaVersion: 'v1', createdBy: actor } });
   const fixtureEntity = await prisma.worldEntity.create({ data: { companyId, entityType: 'SMOKE_TEST', name: 'Smoke Check Entity', canonicalKey: `smoke-entity-${stamp}-b`, attributes: {}, sourceReference: 'smoke', sourceAuthority: actor, createdBy: actor } });
   const fixtureRelation = await prisma.worldRelation.create({ data: { companyId, fromEntityId: fixtureEntity.id, toEntityId: fixtureEntity.id, relationType: 'SMOKE_SELF_TEST', attributes: {}, sourceReference: 'smoke', createdBy: actor } });
