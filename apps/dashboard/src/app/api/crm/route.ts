@@ -1,21 +1,8 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { getSession, isSameOrigin } from '@/lib/auth';
 import { BOOSTA_COMPANY_ID } from '@/lib/company';
-
-async function admin(request?: Request) {
-  const session = await getSession();
-  if (!session) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
-  if (session.role !== 'ADMIN') return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
-  if (request && !isSameOrigin(request)) return { error: NextResponse.json({ error: 'Invalid origin' }, { status: 403 }) };
-  return { session };
-}
-const text = (value: unknown, field: string, limit: number, required = true) => {
-  const result = String(value ?? '').trim();
-  if (required && !result) throw new Error(field + ' is required');
-  if (result.length > limit) throw new Error(field + ' is too long');
-  return result;
-};
+import { requireApiAdmin as admin } from '@/lib/dashboard/auth';
+import { text } from '@/lib/validation';
 
 export async function GET() {
   const auth = await admin();

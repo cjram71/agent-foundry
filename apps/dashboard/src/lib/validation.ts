@@ -1,3 +1,15 @@
+/**
+ * Trim, enforce a max length, and (by default) require a non-empty string
+ * body field. Throws a message suitable for returning to the client as-is.
+ * Previously copy-pasted verbatim into every route validating a request body.
+ */
+export function text(value: unknown, field: string, limit: number, required = true): string {
+  const result = String(value ?? '').trim();
+  if (required && !result) throw new Error(field + ' is required');
+  if (result.length > limit) throw new Error(field + ' is too long');
+  return result;
+}
+
 export type ProjectInput = { name: string; githubOwner: string; githubRepository: string; defaultBranch: string; spendingLimit: number; projectType: string; productionUrl: string | null };
 const githubName = /^[A-Za-z0-9_.-]+$/;
 const branchName = /^[A-Za-z0-9._/-]+$/;
