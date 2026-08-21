@@ -8,7 +8,8 @@ import { emitTaskEvent, transitionTask } from '@foundry/state-machine';
 import { ingestInbox, processEditorialJobs } from './editorial';
 
 const prisma = new PrismaClient();
-const connection = process.env.REDIS_URL ? new IORedis(process.env.REDIS_URL, { maxRetriesPerRequest: null }) : new IORedis({ host: process.env.REDIS_HOST || '127.0.0.1', port: Number(process.env.REDIS_PORT || 6379), password: process.env.REDIS_PASSWORD || undefined, maxRetriesPerRequest: null });
+if (!process.env.REDIS_URL) throw new Error('REDIS_URL is required to connect to Redis (no host/port fallback is used).');
+const connection = new IORedis(process.env.REDIS_URL, { maxRetriesPerRequest: null });
 const planQueue = new Queue('foundry-tasks', { connection });
 const executionQueue = new Queue('foundry-execution', { connection });
 const activeStates: TaskState[] = ['QUEUED','PLANNING','RUNNING','VALIDATING','REVIEWING','REPAIRING'];

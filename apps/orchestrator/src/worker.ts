@@ -17,7 +17,8 @@ import { generatePlannerResponse, ModelBudgetError } from './planner-model';
 
 import { startKnowledgeAgentWorker } from './agent-worker';
 const prisma = new PrismaClient();
-const connection = process.env.REDIS_URL ? new IORedis(process.env.REDIS_URL, { maxRetriesPerRequest: null }) : new IORedis({ host: process.env.REDIS_HOST || '127.0.0.1', port: Number(process.env.REDIS_PORT || 6379), password: process.env.REDIS_PASSWORD || undefined, maxRetriesPerRequest: null });
+if (!process.env.REDIS_URL) throw new Error('REDIS_URL is required to connect to Redis (no host/port fallback is used).');
+const connection = new IORedis(process.env.REDIS_URL, { maxRetriesPerRequest: null });
 const catalogRoot = process.env.AGENT_CATALOG_PATH || path.join(os.homedir(), 'agent-catalogs', '500-AI-Agents-Projects');
 
 const worker = new Worker('foundry-tasks', async (job) => {
